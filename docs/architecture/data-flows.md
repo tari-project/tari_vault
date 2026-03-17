@@ -32,7 +32,7 @@ sequenceDiagram
 
     V->>D: insert(record_id, StoredRecord)
     D->>D: acquire process lock (tokio Mutex)
-    D->>D: acquire file lock (fs2 exclusive)
+    D->>D: acquire file lock (fd-lock exclusive)
     D->>D: read current JSON state
     D->>D: insert new record
     D->>D: write_atomic → NamedTempFile + rename
@@ -180,7 +180,7 @@ sequenceDiagram
 
     OS->>M: ./tari_vault [--config …]
     M->>M: load_config()  layered: defaults → file → env → CLI
-    M->>M: init_logging() log4rs
+    M->>M: init_logging() tracing-subscriber
     M->>M: LocalFileStore::new(vault_file)
     M->>M: Arc::new(StandardVault::new(storage))
     M->>M: vault.cleanup()  startup sweep: clear leftover expired proofs

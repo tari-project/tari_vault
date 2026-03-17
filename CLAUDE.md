@@ -27,7 +27,7 @@ cargo test test_name_here
 ## Architecture
 
 ```
-CLI / Binary (main.rs)          — clap, config, log4rs
+CLI / Binary (main.rs)          — clap, config, tracing
   ↓
 HTTP Transport                  — Tower BearerAuthLayer (constant-time comparison)
   ↓
@@ -49,7 +49,7 @@ Storage Backend (storage/)      — StorageBackend trait, AnyBackend enum, Local
 | `config` | `src/config.rs` | Layered config: defaults → file → env → CLI |
 | `domain` | `src/domain/` | `PlaintextProof` (ZeroizeOnDrop), `ClaimId` (key-in-ID encode/decode), `StoredRecord` |
 | `error` | `src/error.rs` | `VaultError` + `StorageError` with JSON-RPC error code mapping |
-| `storage` | `src/storage/` | `StorageBackend` async trait, `AnyBackend` enum, `LocalFileStore` (JSON file + fs2), `SqliteStore` (WAL mode) |
+| `storage` | `src/storage/` | `StorageBackend` async trait, `AnyBackend` enum, `LocalFileStore` (JSON file + fd-lock), `SqliteStore` (WAL mode) |
 | `vault` | `src/vault/` | `ProofVault` trait, `StandardVault` impl, `CleanupTask` (periodic TTL sweep) |
 | `auth` | `src/auth.rs` | Tower HTTP middleware; validates Bearer token before RPC parsing |
 | `rpc` | `src/rpc/` | `VaultRpc` jsonrpsee trait (`api.rs`), discovery (`discovery.rs`), server startup (`server.rs`) |
@@ -59,7 +59,7 @@ Storage Backend (storage/)      — StorageBackend trait, AnyBackend enum, Local
 - **RPITIT async traits** (Rust 2024 edition) — no `async_trait` macro for `ProofVault` and `StorageBackend`
 - **`Arc<V>` blanket impl** on `ProofVault` — allows sharing vault between RPC server and cleanup task
 - **Atomic file writes** — all mutations use `NamedTempFile::persist()` (temp + rename)
-- **Dual-level locking** (`LocalFileStore`) — `tokio::sync::Mutex` (intra-process) + `fs2` file lock (inter-process)
+- **Dual-level locking** (`LocalFileStore`) — `tokio::sync::Mutex` (intra-process) + `fd-lock` file lock (inter-process)
 - **SQLite backend** (`SqliteStore`) — WAL mode, `rusqlite_migration` schema versioning, `Arc<Mutex<Connection>>` + `spawn_blocking`
 - **`AnyBackend` enum dispatch** — backend selected at startup via `storage.backend` config; no dynamic dispatch overhead
 - **Compile-time OpenRPC** — `include_str!("../../openrpc.json")` embedded in binary, served via `rpc.discover`

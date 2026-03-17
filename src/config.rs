@@ -111,9 +111,8 @@ pub struct StorageConfig {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoggingConfig {
-    /// Optional path to a log4rs YAML config file.
-    pub config_file: Option<PathBuf>,
-    /// Fallback log level used when `config_file` is absent.
+    /// Log level used when `RUST_LOG` is not set.
+    /// One of: error, warn, info, debug, trace.
     pub level: String,
 }
 
@@ -134,7 +133,6 @@ impl Default for VaultConfig {
                 sqlite_path: None,
             },
             logging: LoggingConfig {
-                config_file: None,
                 level: "info".to_string(),
             },
         }

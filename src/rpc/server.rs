@@ -114,7 +114,7 @@ async fn start_plain(
         .await?;
     let addr = server.local_addr()?;
     let handle = server.start(rpc_module);
-    log::info!(target: "tari_vault::rpc", "Vault RPC server listening on http://{addr}");
+    tracing::info!(target: "tari_vault::rpc", "Vault RPC server listening on http://{addr}");
     Ok((addr, handle))
 }
 
@@ -149,7 +149,7 @@ async fn start_tls(
     // Bind the public TLS listener.
     let tls_listener = TcpListener::bind(bind_addr).await?;
     let tls_addr = tls_listener.local_addr()?;
-    log::info!(target: "tari_vault::rpc", "Vault RPC server listening on https://{tls_addr}");
+    tracing::info!(target: "tari_vault::rpc", "Vault RPC server listening on https://{tls_addr}");
 
     // Spawn the TLS accept loop.  Each accepted connection is handed off to
     // its own task that performs the TLS handshake and then forwards raw TCP
@@ -159,7 +159,7 @@ async fn start_tls(
             let (tcp, peer) = match tls_listener.accept().await {
                 Ok(v) => v,
                 Err(e) => {
-                    log::warn!(target: "tari_vault::rpc", "TLS accept error: {e}");
+                    tracing::warn!(target: "tari_vault::rpc", "TLS accept error: {e}");
                     continue;
                 }
             };
@@ -169,7 +169,7 @@ async fn start_tls(
                 let mut tls_stream = match acceptor.accept(tcp).await {
                     Ok(s) => s,
                     Err(e) => {
-                        log::warn!(
+                        tracing::warn!(
                             target: "tari_vault::rpc",
                             "TLS handshake failed from {peer}: {e}"
                         );
@@ -180,7 +180,7 @@ async fn start_tls(
                 let mut plain_stream = match TcpStream::connect(plain_addr).await {
                     Ok(s) => s,
                     Err(e) => {
-                        log::warn!(
+                        tracing::warn!(
                             target: "tari_vault::rpc",
                             "Failed to connect to plain server: {e}"
                         );
@@ -191,7 +191,7 @@ async fn start_tls(
                 if let Err(e) =
                     tokio::io::copy_bidirectional(&mut tls_stream, &mut plain_stream).await
                 {
-                    log::debug!(target: "tari_vault::rpc", "TLS proxy connection closed: {e}");
+                    tracing::debug!(target: "tari_vault::rpc", "TLS proxy connection closed: {e}");
                 }
             });
         }
@@ -263,7 +263,7 @@ fn vault_to_rpc_err(err: VaultError) -> ErrorObjectOwned {
     let code = err.rpc_code();
     // Log internal errors at warn level — never include sensitive detail.
     if code == -32005 {
-        log::warn!(target: "tari_vault::rpc", "Internal vault error: {err}");
+        tracing::warn!(target: "tari_vault::rpc", "Internal vault error: {err}");
     }
     ErrorObjectOwned::owned(code, err.to_string(), None::<()>)
 }

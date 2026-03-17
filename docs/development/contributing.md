@@ -250,10 +250,10 @@ Dependencies are chosen for maturity, security record, and minimal footprint:
 | `tower` | HTTP middleware | Bearer auth layer |
 | `tokio` | Async runtime | Multi-threaded, full features |
 | `tokio-util` | CancellationToken | Scoped task cancellation |
-| `fs2` | Cross-platform file locking | Inter-process mutex |
+| `fd-lock` | Cross-platform file locking | Inter-process mutex |
 | `config` | Layered configuration | TOML/YAML/env support |
 | `serde` / `serde_json` | Serialisation | Vault file format |
 | `thiserror` | Error types | Ergonomic derive |
 | `anyhow` | Error propagation in binary | Context chains |
 | `clap` | CLI parsing | derive-mode |
-| `log` / `log4rs` | Logging | Facade + configurable backend |
+| `tracing` / `tracing-subscriber` | Structured logging | Async-aware, `RUST_LOG` env filter |

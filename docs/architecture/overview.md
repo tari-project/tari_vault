@@ -49,7 +49,7 @@ graph TB
     subgraph Binary["tari_vault binary  (src/main.rs)"]
         CLI["CLI (clap)\n--config, --bind,\n--auth-token, …"]
         CFG["Config Loader\n(config crate)\ndefaults → file → env"]
-        LOGCFG["log4rs\nInitialiser"]
+        LOGCFG["tracing-subscriber\nInitialiser"]
     end
 
     subgraph Server["RPC Server  (src/rpc/)"]
@@ -64,7 +64,7 @@ graph TB
 
     subgraph StorageLayer["Storage  (src/storage/)"]
         ANY["AnyBackend enum\nselected at startup via config"]
-        STORE["LocalFileStore\nBTreeMap → JSON on disk\nwrite-atomic (rename)\nfs2 inter-process lock\ntokio::sync::Mutex intra-process\n0o600 Unix permissions"]
+        STORE["LocalFileStore\nBTreeMap → JSON on disk\nwrite-atomic (rename)\nfd-lock inter-process lock\ntokio::sync::Mutex intra-process\n0o600 Unix permissions"]
         SQLITE["SqliteStore\nWAL mode SQLite\nrusqlite_migration schema versioning\nArc&lt;Mutex&lt;Connection&gt;&gt; + spawn_blocking\n0o600 Unix permissions"]
     end
 
@@ -123,7 +123,7 @@ graph TB
 
 ```
 ┌─────────────────────────────────────────┐
-│  CLI / Binary (main.rs)                 │  clap, config, log4rs
+│  CLI / Binary (main.rs)                 │  clap, config, tracing
 ├─────────────────────────────────────────┤
 │  HTTP Transport                         │  tokio, hyper (via jsonrpsee)
 │    └─ BearerAuthLayer (Tower)           │  subtle::ConstantTimeEq
@@ -138,7 +138,7 @@ graph TB
 │    └─ CleanupTask                       │  tokio-util CancellationToken
 ├─────────────────────────────────────────┤
 │  Storage Backend                        │  AnyBackend enum (selected at startup)
-│    ├─ LocalFileStore                    │  serde_json, fs2, tempfile, uuid
+│    ├─ LocalFileStore                    │  serde_json, fd-lock, tempfile, uuid
 │    └─ SqliteStore                       │  rusqlite (bundled), rusqlite_migration
 └─────────────────────────────────────────┘
 ```

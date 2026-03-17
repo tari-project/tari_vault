@@ -89,7 +89,7 @@ where
         // letting ticks pile up.
         ticker.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
 
-        log::debug!(
+        tracing::debug!(
             target: "tari_vault::cleanup",
             "Cleanup task started (interval: {}s)",
             interval.as_secs()
@@ -101,23 +101,23 @@ where
                 biased;
 
                 _ = task_token.cancelled() => {
-                    log::debug!(target: "tari_vault::cleanup", "Cleanup task stopping");
+                    tracing::debug!(target: "tari_vault::cleanup", "Cleanup task stopping");
                     break;
                 }
 
                 _ = ticker.tick() => {
                     match vault.cleanup().await {
                         Ok(0) => {
-                            log::debug!(target: "tari_vault::cleanup", "Periodic sweep: no expired proofs");
+                            tracing::debug!(target: "tari_vault::cleanup", "Periodic sweep: no expired proofs");
                         }
                         Ok(n) => {
-                            log::info!(
+                            tracing::info!(
                                 target: "tari_vault::cleanup",
                                 "Periodic sweep removed {n} expired proof(s)"
                             );
                         }
                         Err(e) => {
-                            log::warn!(
+                            tracing::warn!(
                                 target: "tari_vault::cleanup",
                                 "Cleanup sweep failed: {e}"
                             );
@@ -127,7 +127,7 @@ where
             }
         }
 
-        log::debug!(target: "tari_vault::cleanup", "Cleanup task stopped");
+        tracing::debug!(target: "tari_vault::cleanup", "Cleanup task stopped");
     });
 
     CleanupTask {

@@ -366,8 +366,8 @@ pub enum VaultError {
 | `VAULT__STORAGE__VAULT_FILE` | platform data dir | path |
 | `VAULT__STORAGE__SQLITE_PATH` | same dir as vault_file, `vault.db` | path |
 | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | `300` | integer |
-| `VAULT__LOGGING__LEVEL` | `info` | string |
-| `VAULT__LOGGING__CONFIG_FILE` | *(null)* | path |
+| `VAULT__LOGGING__LEVEL` | `info` | string (fallback when `RUST_LOG` not set) |
+| `RUST_LOG` | *(null)* | string (`tracing-subscriber` filter; takes priority) |
 
 ### CLI flags
 
@@ -378,8 +378,7 @@ pub enum VaultError {
 --bind <ADDR>             bind address
 --cleanup-interval <SECS> cleanup interval (0 = disabled)
 --auth-token <TOKEN>      bearer token
---log-config <FILE>       log4rs yaml config
---log-level <LEVEL>       error|warn|info|debug|trace
+--log-level <LEVEL>       error|warn|info|debug|trace (fallback when RUST_LOG not set)
 ```
 
 ---

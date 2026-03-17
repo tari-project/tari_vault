@@ -6,29 +6,18 @@
 
 ## Problem
 
-`fs2 = "0.4"` has not had a release since 2018. It is used exclusively in `src/storage/local_file.rs` for inter-process exclusive file locking to protect the vault JSON file against concurrent writes from multiple vault processes.
+`fs2 = "0.4"` had not had a release since 2018. It was used exclusively in `src/storage/local_file.rs` for inter-process exclusive file locking to protect the vault JSON file against concurrent writes from multiple vault processes.
 
-## Goal
+## Resolution
 
-Replace `fs2` with an actively maintained alternative, or eliminate the dependency entirely by adopting the SQLite backend (IMP-003).
+**Option A was chosen: migrate to `fd-lock`.**
 
-## Options
+`fd-lock 4.0` is an actively maintained cross-platform file-locking crate. The `LocalFileStore` inter-process lock was migrated from `fs2::FileExt::lock_exclusive` to `fd_lock::RwLock::write()`, with equivalent blocking semantics.
 
-### Option A: Migrate to `fd-lock` (recommended if keeping `LocalFileStore`)
+## What Changed
 
-`fd-lock` is an actively maintained cross-platform file-locking crate. API is slightly different but the concept is identical.
-
-### Option B: Migrate to `file-lock`
-
-Another maintained option with a simpler API surface.
-
-### Option C: Remove via IMP-003 (preferred)
-
-If the SQLite backend is implemented, `LocalFileStore` becomes the legacy/simple backend and can retain `fs2` in a deprecated state, or the SQLite path eliminates the need for `LocalFileStore` entirely in production deployments. `fs2` is removed as a consequence.
-
-## Recommendation
-
-Defer this task. If IMP-003 (SQLite backend) is implemented, evaluate whether `LocalFileStore` will remain in the codebase long-term. If yes, migrate to `fd-lock`. If `LocalFileStore` is deprecated, close this issue as resolved by IMP-003.
+- `Cargo.toml`: removed `fs2`, added `fd-lock = "4.0.4"`
+- `src/storage/local_file.rs`: replaced `fs2` lock usage with `fd_lock::RwLock`
 
 ## Affected Files
 

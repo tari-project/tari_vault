@@ -74,15 +74,10 @@ vault_file = "/var/lib/tari_vault/vault.json"
 cleanup_interval_secs = 300
 
 [logging]
-# Fallback log level when config_file is absent.
+# Log level used when RUST_LOG is not set.
 # One of: error | warn | info | debug | trace
 # Default: "info"
 level = "info"
-
-# Optional path to a log4rs YAML configuration file.
-# When provided, the `level` field above is ignored.
-# Default: null (use built-in console appender)
-# config_file = "/etc/tari_vault/log4rs.yaml"
 ```
 
 YAML format is also supported (`vault_config.yaml`):
@@ -103,7 +98,6 @@ storage:
 
 logging:
   level: info
-  # config_file: "/etc/tari_vault/log4rs.yaml"
 ```
 
 ---
@@ -123,8 +117,8 @@ All variables use the prefix `VAULT__` with `__` as the section separator.
 | `VAULT__STORAGE__VAULT_FILE` | path | *(platform data dir)* | Path to vault JSON file |
 | `VAULT__STORAGE__SQLITE_PATH` | path | *(same dir as vault_file, `vault.db`)* | Path to SQLite database |
 | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | integer | `300` | Cleanup sweep interval; `0` = disabled |
-| `VAULT__LOGGING__LEVEL` | string | `info` | Log level |
-| `VAULT__LOGGING__CONFIG_FILE` | path | *(none)* | log4rs YAML config path |
+| `VAULT__LOGGING__LEVEL` | string | `info` | Log level (fallback when `RUST_LOG` not set) |
+| `RUST_LOG` | string | *(none)* | Standard `tracing-subscriber` filter (takes priority over `VAULT__LOGGING__LEVEL`) |
 
 Environment variables are loaded **after** the config file, so they override file values.
 
@@ -154,8 +148,7 @@ CLI flags override everything else (highest priority).
 | `--tls-cert <FILE>` | path | `VAULT__SERVER__TLS_CERT_PATH` | PEM TLS certificate (required for non-loopback) |
 | `--tls-key <FILE>` | path | `VAULT__SERVER__TLS_KEY_PATH` | PEM TLS private key (required for non-loopback) |
 | `--insecure-no-tls` | flag | `VAULT__SERVER__INSECURE_NO_TLS` | Allow plain HTTP on non-loopback (proxy termination only) |
-| `--log-config <FILE>` | path | `VAULT__LOGGING__CONFIG_FILE` | log4rs YAML config |
-| `--log-level <LEVEL>` | string | `VAULT__LOGGING__LEVEL` | Log level |
+| `--log-level <LEVEL>` | string | `VAULT__LOGGING__LEVEL` | Log level (fallback when `RUST_LOG` not set) |
 
 ---
 
@@ -172,58 +165,26 @@ CLI flags override everything else (highest priority).
 | `storage.vault_file` | `<platform_data_dir>/tari_vault/vault.json` | Created on first run (file backend) |
 | `storage.sqlite_path` | same dir as `vault_file`, named `vault.db` | Created on first run (sqlite backend) |
 | `storage.cleanup_interval_secs` | `300` | 5 minutes |
-| `logging.level` | `info` | |
-| `logging.config_file` | *(none)* | Built-in console appender used |
+| `logging.level` | `info` | Fallback when `RUST_LOG` is not set |
 
 ---
 
-## Log4rs Custom Configuration
+## Log Level Configuration
 
-Supply a log4rs YAML file for file rotation, structured JSON output, multiple appenders, etc.
-
-```yaml
-# log4rs.yaml
-appenders:
-  console:
-    kind: console
-    encoder:
-      pattern: "{d(%Y-%m-%dT%H:%M:%S%.3fZ)(utc)} {h({l:<5})} {t} — {m}{n}"
-  file:
-    kind: rolling_file
-    path: "/var/log/tari_vault/vault.log"
-    policy:
-      kind: compound
-      trigger:
-        kind: size
-        limit: 50 mb
-      roller:
-        kind: fixed_window
-        pattern: "/var/log/tari_vault/vault.{}.log.gz"
-        base: 1
-        count: 5
-    encoder:
-      pattern: "{d(%Y-%m-%dT%H:%M:%S%.3fZ)(utc)} {l:<5} {t} — {m}{n}"
-
-root:
-  level: info
-  appenders:
-    - console
-    - file
-
-loggers:
-  tari_vault:
-    level: debug
-    appenders:
-      - file
-    additive: false
-```
-
-Reference with:
+Logging uses `tracing-subscriber` with `EnvFilter`. `RUST_LOG` takes priority over `--log-level` / `VAULT__LOGGING__LEVEL`.
 
 ```bash
-./tari_vault --log-config log4rs.yaml
-# or
-VAULT__LOGGING__CONFIG_FILE=log4rs.yaml ./tari_vault
+# Enable debug logging for all tari_vault targets
+RUST_LOG=tari_vault=debug ./tari_vault
+
+# Fine-grained per-target control
+RUST_LOG=tari_vault::vault=debug,tari_vault=info ./tari_vault
+
+# Inspect jsonrpsee internal spans
+RUST_LOG=tari_vault=info,jsonrpsee=debug ./tari_vault
+
+# Fallback level via config (used when RUST_LOG is absent)
+./tari_vault --log-level debug
 ```
 
 ---

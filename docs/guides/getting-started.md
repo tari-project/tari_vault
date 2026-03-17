@@ -71,7 +71,6 @@ OPTIONS:
         --tls-cert <FILE>            Path to TLS certificate (PEM); required for non-loopback
         --tls-key <FILE>             Path to TLS private key (PEM); required for non-loopback
         --insecure-no-tls            Allow plain HTTP on non-loopback (external-proxy deployments only)
-        --log-config <FILE>          Path to a log4rs YAML config file
         --log-level <LEVEL>          Log level: error|warn|info|debug|trace [default: info]
     -h, --help                       Print help
     -V, --version                    Print version
@@ -244,8 +243,7 @@ vault_file = "/var/lib/tari_vault/vault.json"
 cleanup_interval_secs = 300
 
 [logging]
-level = "info"
-# config_file = "/etc/tari_vault/log4rs.yaml"  # override with log4rs config
+level = "info"   # fallback when RUST_LOG is not set
 ```
 
 Or YAML (`vault_config.yaml`):

@@ -117,7 +117,7 @@ impl VaultSubsystem {
         // Startup sweep: clear any leftover expired proofs from previous runs.
         let purged = vault.cleanup().await?;
         if purged > 0 {
-            log::info!("Startup cleanup removed {purged} expired proof(s)");
+            tracing::info!("Startup cleanup removed {purged} expired proof(s)");
         }
 
         // Background sweep.
@@ -131,7 +131,7 @@ impl VaultSubsystem {
         let (addr, server_handle) =
             start_server(bind_addr, Arc::clone(&vault), auth_token).await?;
 
-        log::info!("Vault subsystem started on {addr}");
+        tracing::info!("Vault subsystem started on {addr}");
 
         Ok(Self { server_handle, cleanup_task, shutdown })
     }
@@ -141,7 +141,7 @@ impl VaultSubsystem {
         self.server_handle.stopped().await;
         self.shutdown.cancel();
         self.cleanup_task.stopped().await;
-        log::info!("Vault subsystem stopped");
+        tracing::info!("Vault subsystem stopped");
     }
 }
 ```
@@ -283,7 +283,13 @@ tokio::runtime::Builder::new_multi_thread()
 
 ## Logging Integration
 
-`tari_vault` uses the `log` crate facade. Log output will automatically appear in whatever backend your application configures (`log4rs`, `env_logger`, `tracing`, etc.).
+`tari_vault` uses the `tracing` crate. Log output appears in whatever `tracing` subscriber your application installs. If you have no subscriber, install one before starting the vault:
+
+```rust
+tracing_subscriber::fmt()
+    .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+    .init();
+```
 
 Vault log targets:
 
@@ -293,5 +299,11 @@ Vault log targets:
 | `tari_vault::cleanup` | Periodic sweep results |
 | `tari_vault::rpc` | Server address, internal errors |
 | `tari_vault::auth` | Rejected unauthenticated requests |
+
+Control verbosity with `RUST_LOG`:
+
+```bash
+RUST_LOG=tari_vault=debug,tari_vault::cleanup=info ./your_app
+```
 
 All sensitive fields (`Claim_ID`, `encryption_key`, `PlaintextProof`) are explicitly redacted and never appear in log output at any log level.

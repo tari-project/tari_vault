@@ -1,6 +1,6 @@
 # IMP-009: Migrate from `log4rs` to `tracing`
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 4 — Dependency Hygiene
 **Priority:** Medium
 
@@ -18,65 +18,82 @@ The project uses `log4rs` with a YAML configuration file for logging. While func
 
 Replace `log4rs` with `tracing` + `tracing-subscriber` for a more idiomatic, operationally richer logging setup.
 
-## Proposed Changes
+## What Was Done
 
-### Dependencies
+### Dependencies (`Cargo.toml`)
 
+Removed:
 ```toml
-# Remove:
-log4rs = "1.4"
+log = { version = "0.4.29", features = ["kv"] }
+log4rs = { version = "1.4.0", features = ["yaml_format", "console_appender", "file_appender", "log_kv"] }
+```
 
-# Add:
+Added:
+```toml
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 ```
 
-The existing `log` facade calls (`log::info!`, `log::warn!`, `log::error!`) are compatible with `tracing` via the `tracing-log` bridge, allowing incremental migration.
+All 29 `log::` call sites across 5 files were migrated directly to `tracing::` macros, so no `tracing-log` bridge was needed.
 
-### Initialization
+### Initialization (`src/main.rs`)
 
-Replace `log4rs::init_file(...)` in `src/main.rs` with:
+Replaced the two-path `init_logging()` (YAML file vs programmatic log4rs config) with:
 
 ```rust
-tracing_subscriber::fmt()
-    .with_env_filter(EnvFilter::from_default_env())
-    .init();
+fn init_logging(cfg: &VaultConfig) {
+    use tracing_subscriber::EnvFilter;
+    let filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new(&cfg.logging.level));
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .init();
+}
 ```
 
-Or with JSON output for structured log ingestion:
+`RUST_LOG` takes priority. When absent, `--log-level` / `VAULT__LOGGING__LEVEL` (default: `info`) is used.
 
-```rust
-tracing_subscriber::fmt()
-    .json()
-    .with_env_filter(EnvFilter::from_default_env())
-    .init();
+### Config (`src/config.rs`)
+
+Removed `LoggingConfig.config_file: Option<PathBuf>` — no equivalent concept in `tracing-subscriber`.
+
+### CLI (`src/main.rs`)
+
+Removed `--log-config <FILE>` argument. The YAML config path is no longer supported.
+
+### Files deleted
+
+- `log4rs.yaml` — replaced by `RUST_LOG` environment variable
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `Cargo.toml` | Swapped deps |
+| `src/config.rs` | Removed `config_file` field |
+| `src/main.rs` | Rewrote `init_logging()`, removed `--log-config` arg, migrated log macros |
+| `src/vault/proof_vault.rs` | `log::` → `tracing::` (4 statements) |
+| `src/vault/cleanup.rs` | `log::` → `tracing::` (6 statements) |
+| `src/rpc/server.rs` | `log::` → `tracing::` (7 statements) |
+| `src/auth.rs` | `log::` → `tracing::` (1 statement) |
+
+## Configuration
+
+```bash
+# Set level via env (takes priority)
+RUST_LOG=tari_vault=debug ./tari_vault
+
+# Fine-grained per-target control
+RUST_LOG=tari_vault::vault=debug,tari_vault=info ./tari_vault
+
+# Inspect jsonrpsee internal spans (now visible because tracing-subscriber captures them)
+RUST_LOG=tari_vault=info,jsonrpsee=debug ./tari_vault
+
+# Fallback level via flag (used when RUST_LOG is absent)
+./tari_vault --log-level debug
 ```
 
-### Instrumentation Opportunities
+## Follow-on Opportunity
 
-Once on `tracing`, key async operations can be instrumented with spans:
-
-```rust
-#[tracing::instrument(skip(self, proof), fields(record_id))]
-async fn store_proof(...) { ... }
-```
-
-This provides request-scoped context in logs without manual field threading.
-
-### Configuration
-
-`RUST_LOG=tari_vault=info` replaces the YAML log config. The `--debug` CLI flag can set `RUST_LOG=tari_vault=debug` programmatically.
-
-## Affected Files
-
-- `src/main.rs` — init change, remove YAML log config path
-- `src/config.rs` — remove `log_config_path` if present
-- All `log::` call sites — can migrate incrementally to `tracing::` macros
-- `Cargo.toml`
-- Any `log4rs.yaml` / `log4rs-debug.yaml` config files
-
-## Notes
-
-- This is the most involved change in Tier 4 but yields the highest operational value.
-- The `log` → `tracing` migration can be done incrementally: add `tracing-log` bridge first, then replace macros file by file.
-- Consider enabling `tokio-console` support via `console-subscriber` as a follow-on once `tracing` is in place.
+`tokio-console` support can be added via `console-subscriber` — requires enabling `tokio_unstable` and adding the `console-subscriber` crate. Now that `tracing` is in place this is a one-file change.

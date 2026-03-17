@@ -35,11 +35,7 @@ struct Cli {
     #[arg(long, value_name = "SECS")]
     cleanup_interval: Option<u64>,
 
-    /// Path to a log4rs YAML configuration file.
-    #[arg(long, value_name = "FILE")]
-    log_config: Option<PathBuf>,
-
-    /// Log level used when no log config file is provided.
+    /// Log level when RUST_LOG is not set.
     /// One of: error, warn, info, debug, trace.
     #[arg(long, default_value = "info")]
     log_level: Option<String>,
@@ -95,9 +91,6 @@ async fn main() -> anyhow::Result<()> {
     if let Some(level) = cli.log_level {
         cfg.logging.level = level;
     }
-    if let Some(log_cfg) = cli.log_config {
-        cfg.logging.config_file = Some(log_cfg);
-    }
     if let Some(token) = cli.auth_token {
         cfg.server.auth_token = Some(token);
     }
@@ -111,10 +104,10 @@ async fn main() -> anyhow::Result<()> {
         cfg.server.insecure_no_tls = true;
     }
 
-    init_logging(&cfg)?;
+    init_logging(&cfg);
 
-    log::info!(target: "tari_vault", "Starting Tari Vault v{}", env!("CARGO_PKG_VERSION"));
-    log::debug!(target: "tari_vault", "Config: {:?}", cfg);
+    tracing::info!(target: "tari_vault", "Starting Tari Vault v{}", env!("CARGO_PKG_VERSION"));
+    tracing::debug!(target: "tari_vault", "Config: {:?}", cfg);
 
     let sqlite_path = cfg
         .storage
@@ -124,14 +117,14 @@ async fn main() -> anyhow::Result<()> {
 
     let storage = match cfg.storage.backend {
         BackendKind::File => {
-            log::info!(target: "tari_vault", "Storage backend: file ({})", cfg.storage.vault_file.display());
+            tracing::info!(target: "tari_vault", "Storage backend: file ({})", cfg.storage.vault_file.display());
             AnyBackend::File(
                 LocalFileStore::new(cfg.storage.vault_file.clone())
                     .context("Failed to open vault storage file")?,
             )
         }
         BackendKind::Sqlite => {
-            log::info!(target: "tari_vault", "Storage backend: sqlite ({})", sqlite_path.display());
+            tracing::info!(target: "tari_vault", "Storage backend: sqlite ({})", sqlite_path.display());
             AnyBackend::Sqlite(
                 SqliteStore::new(sqlite_path).context("Failed to open SQLite database")?,
             )
@@ -141,13 +134,13 @@ async fn main() -> anyhow::Result<()> {
 
     let purged = vault.cleanup().await.context("Startup cleanup failed")?;
     if purged > 0 {
-        log::info!(target: "tari_vault", "Startup cleanup: removed {purged} expired proof(s)");
+        tracing::info!(target: "tari_vault", "Startup cleanup: removed {purged} expired proof(s)");
     }
 
     let shutdown = CancellationToken::new();
     let cleanup_task = if cfg.storage.cleanup_interval_secs > 0 {
         let interval = Duration::from_secs(cfg.storage.cleanup_interval_secs);
-        log::info!(
+        tracing::info!(
             target: "tari_vault",
             "Background cleanup enabled (interval: {}s)", interval.as_secs()
         );
@@ -157,7 +150,7 @@ async fn main() -> anyhow::Result<()> {
             shutdown.clone(),
         ))
     } else {
-        log::info!(target: "tari_vault", "Background cleanup disabled (cleanup_interval_secs = 0)");
+        tracing::info!(target: "tari_vault", "Background cleanup disabled (cleanup_interval_secs = 0)");
         None
     };
 
@@ -174,7 +167,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     if cfg.server.insecure_no_tls {
-        log::warn!(
+        tracing::warn!(
             target: "tari_vault",
             "insecure_no_tls is enabled — plain HTTP on a non-loopback address. \
              Ensure TLS is terminated by an external proxy."
@@ -195,52 +188,32 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("Failed to listen for Ctrl-C")?;
 
-    log::info!(target: "tari_vault", "Shutdown signal received");
+    tracing::info!(target: "tari_vault", "Shutdown signal received");
 
     // Stop the RPC server first (no new requests accepted).
     server_handle.stop()?;
     server_handle.stopped().await;
-    log::info!(target: "tari_vault", "RPC server stopped");
+    tracing::info!(target: "tari_vault", "RPC server stopped");
 
     // Cancel the cleanup task and wait for it to exit.
     shutdown.cancel();
     if let Some(task) = cleanup_task {
         task.stopped().await;
-        log::info!(target: "tari_vault", "Cleanup task stopped");
+        tracing::info!(target: "tari_vault", "Cleanup task stopped");
     }
 
-    log::info!(target: "tari_vault", "Shutdown complete");
+    tracing::info!(target: "tari_vault", "Shutdown complete");
     Ok(())
 }
 
-fn init_logging(cfg: &VaultConfig) -> anyhow::Result<()> {
-    if let Some(log_cfg_path) = &cfg.logging.config_file {
-        log4rs::init_file(log_cfg_path, Default::default())
-            .with_context(|| format!("Failed to load log config from {log_cfg_path:?}"))?;
-        return Ok(());
-    }
+fn init_logging(cfg: &VaultConfig) {
+    use tracing_subscriber::EnvFilter;
 
-    use log::LevelFilter;
-    use log4rs::{
-        append::console::ConsoleAppender,
-        config::{Appender, Config, Root},
-        encode::pattern::PatternEncoder,
-    };
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&cfg.logging.level));
 
-    let level: LevelFilter = cfg.logging.level.parse().unwrap_or(LevelFilter::Info);
-
-    let console = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new(
-            "{d(%Y-%m-%dT%H:%M:%S%.3fZ)(utc)} {h({l:<5})} {t} — {m}{n}",
-        )))
-        .build();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("console", Box::new(console)))
-        .build(Root::builder().appender("console").build(level))
-        .context("Failed to build log4rs config")?;
-
-    log4rs::init_config(config).context("Failed to initialise log4rs")?;
-
-    Ok(())
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(true)
+        .init();
 }

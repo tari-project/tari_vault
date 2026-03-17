@@ -118,7 +118,7 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
 
         let encoded = claim_id.encode();
         // `claim_id` is dropped here — ZeroizeOnDrop wipes encryption_key.
-        log::info!(
+        tracing::info!(
             target: "tari_vault::vault",
             "Proof stored; record_id={}",
             uuid::Uuid::from_bytes(record_id).simple()
@@ -144,13 +144,13 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
 
         if stored.is_expired() {
             if let Err(e) = self.storage.delete(record_id).await {
-                log::warn!(
+                tracing::warn!(
                     target: "tari_vault::vault",
                     "Failed to delete expired record {}; storage error: {e}",
                     uuid::Uuid::from_bytes(record_id).simple()
                 );
             }
-            log::warn!(
+            tracing::warn!(
                 target: "tari_vault::vault",
                 "Expired proof access attempt; record_id={}",
                 uuid::Uuid::from_bytes(record_id).simple()
@@ -174,7 +174,7 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         self.storage.delete(record_id).await?;
 
         // `claim_id` is dropped here — ZeroizeOnDrop wipes encryption_key.
-        log::info!(
+        tracing::info!(
             target: "tari_vault::vault",
             "Proof retrieved and consumed; record_id={}",
             uuid::Uuid::from_bytes(record_id).simple()
@@ -186,7 +186,7 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
     async fn cleanup(&self) -> Result<usize, VaultError> {
         let removed = self.storage.delete_expired().await?;
         if removed > 0 {
-            log::info!(
+            tracing::info!(
                 target: "tari_vault::vault",
                 "Cleanup sweep removed {removed} expired proof(s)"
             );
@@ -207,7 +207,7 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         }
 
         // `claim_id` is dropped here — ZeroizeOnDrop wipes encryption_key.
-        log::info!(
+        tracing::info!(
             target: "tari_vault::vault",
             "Proof explicitly deleted by holder; record_id={}",
             uuid::Uuid::from_bytes(record_id).simple()

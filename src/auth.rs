@@ -122,7 +122,7 @@ where
             return Box::pin(self.inner.call(req));
         }
 
-        log::warn!(target: "tari_vault::auth", "Rejected request: missing or invalid Bearer token");
+        tracing::warn!(target: "tari_vault::auth", "Rejected request: missing or invalid Bearer token");
 
         Box::pin(async {
             Ok(Response::builder()

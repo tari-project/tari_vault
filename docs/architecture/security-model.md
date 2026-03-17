@@ -14,7 +14,7 @@
 | Unauthenticated RPC calls | Optional Bearer token enforced at HTTP layer before RPC parsing |
 | Memory leak of key material | `ZeroizeOnDrop` on all sensitive types |
 | Log scraping for secrets | Only `record_id` (non-sensitive) appears in log output |
-| Concurrent file corruption | `tokio::sync::Mutex` (intra-process) + `fs2` exclusive lock (inter-process) + atomic rename |
+| Concurrent file corruption | `tokio::sync::Mutex` (intra-process) + `fd-lock` exclusive lock (inter-process) + atomic rename |
 
 ---
 
@@ -174,7 +174,7 @@ The vault file is protected by two independent locks:
                  │   └─ spawn_blocking (one at a time)   │
                  │       │                               │
                  │       ▼                               │
-                 │   fs2 exclusive file lock             │
+                 │   fd-lock exclusive file lock         │
                  │    on vault.lock sidecar              │
                  │   (serialises across processes)       │
                  └───────────────────────────────────────┘
@@ -182,5 +182,5 @@ The vault file is protected by two independent locks:
 
 This two-level approach means:
 - **Within a process:** The `tokio::sync::Mutex` prevents concurrent `spawn_blocking` calls from racing. It is a `tokio` mutex so it yields the executor rather than blocking a thread.
-- **Across processes:** The `fs2` exclusive lock prevents two vault instances (e.g. a running server and a CLI invocation) from corrupting each other's data.
+- **Across processes:** The `fd-lock` exclusive lock prevents two vault instances (e.g. a running server and a CLI invocation) from corrupting each other's data.
 - **Crash safety:** Even if a process is killed mid-write, the vault file is replaced atomically via `NamedTempFile::persist` (a rename syscall). The old data remains intact until the rename succeeds.

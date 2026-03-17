@@ -126,7 +126,7 @@ Full reference: [Configuration Guide](docs/guides/configuration.md)
 - **Key never persisted** — the decryption key exists only in RAM and in the `Claim_ID`
 - **Bearer token auth** with constant-time comparison (`subtle::ConstantTimeEq`) enforced at the HTTP layer, before RPC parsing
 - **ZeroizeOnDrop** on all sensitive types (`PlaintextProof`, `ClaimId`, intermediate buffers)
-- **Two storage backends** — file (`LocalFileStore`: atomic writes via `NamedTempFile::persist()`, dual-lock with `fs2`) or SQLite (`SqliteStore`: WAL mode, O(1) ops, `secure_delete`); selected via `storage.backend` config
+- **Two storage backends** — file (`LocalFileStore`: atomic writes via `NamedTempFile::persist()`, dual-lock with `fd-lock`) or SQLite (`SqliteStore`: WAL mode, O(1) ops, `secure_delete`); selected via `storage.backend` config
 - **Generic crypto error messages** — all AES-GCM failures return `DecryptionFailed` with no detail
 
 Details: [Security Model](docs/architecture/security-model.md)
