@@ -217,7 +217,7 @@
         "required": ["proof_json"],
         "properties": {
           "proof_json": {
-            "description": "The proof material as any JSON value (object, string, number, array, or boolean). The vault serialises whatever is supplied and encrypts it verbatim — structure is opaque to the vault."
+            "description": "The proof material as any JSON value (object, string, number, array, or boolean). The vault serialises whatever is supplied and encrypts it verbatim — structure is opaque to the vault. The serialised size must not exceed `max_proof_size_bytes` (default 1 MiB); oversized payloads are rejected with `InvalidParameter` (-32006) before any encryption occurs."
           },
           "expires_in_secs": {
             "description": "Time-to-live in seconds from the moment of storage. After the TTL elapses the proof is inaccessible and will be purged by the next cleanup sweep. Omit or set to `null` for a proof that never expires. Must be a positive integer (≥ 1) if provided; zero is rejected with `InvalidParameter`.",

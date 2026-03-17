@@ -1,6 +1,6 @@
 # IMP-013: Request Size Cap on `proof_json`
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 6 — Minor / Nice-to-Have
 **Priority:** Low
 

@@ -52,6 +52,20 @@ pub struct ServerConfig {
     /// `server.insecure_no_tls = true` in the config file.
     #[serde(default)]
     pub insecure_no_tls: bool,
+
+    /// Maximum allowed serialised size of `proof_json` in bytes.
+    ///
+    /// Requests whose serialised `proof_json` exceeds this limit are rejected
+    /// with an `InvalidParameter` error before any encryption or storage
+    /// occurs.  The HTTP transport enforces the same cap on the full request
+    /// body to stop amplification at the transport layer.
+    ///
+    /// Default: 1 MiB (1 048 576 bytes).
+    ///
+    /// Set via `VAULT__SERVER__MAX_PROOF_SIZE_BYTES` or
+    /// `server.max_proof_size_bytes` in the config file.
+    #[serde(default = "default_max_proof_size_bytes")]
+    pub max_proof_size_bytes: usize,
 }
 
 impl std::fmt::Debug for ServerConfig {
@@ -65,6 +79,7 @@ impl std::fmt::Debug for ServerConfig {
             .field("tls_cert_path", &self.tls_cert_path)
             .field("tls_key_path", &self.tls_key_path)
             .field("insecure_no_tls", &self.insecure_no_tls)
+            .field("max_proof_size_bytes", &self.max_proof_size_bytes)
             .finish()
     }
 }
@@ -116,6 +131,10 @@ pub struct LoggingConfig {
     pub level: String,
 }
 
+fn default_max_proof_size_bytes() -> usize {
+    1_048_576 // 1 MiB
+}
+
 impl Default for VaultConfig {
     fn default() -> Self {
         Self {
@@ -125,6 +144,7 @@ impl Default for VaultConfig {
                 tls_cert_path: None,
                 tls_key_path: None,
                 insecure_no_tls: false,
+                max_proof_size_bytes: default_max_proof_size_bytes(),
             },
             storage: StorageConfig {
                 vault_file: default_vault_path(),
@@ -164,7 +184,11 @@ pub fn load_config(config_file: Option<&Path>) -> anyhow::Result<VaultConfig> {
             defaults.storage.cleanup_interval_secs,
         )?
         .set_default("storage.backend", "file")?
-        .set_default("logging.level", defaults.logging.level)?;
+        .set_default("logging.level", defaults.logging.level)?
+        .set_default(
+            "server.max_proof_size_bytes",
+            defaults.server.max_proof_size_bytes as u64,
+        )?;
 
     // Config file source.
     if let Some(path) = config_file {

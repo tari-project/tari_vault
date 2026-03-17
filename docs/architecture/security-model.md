@@ -10,6 +10,7 @@
 | Attacker guesses `Claim_ID` | 256-bit key space (32-byte random key); brute force infeasible |
 | Replay: retrieve proof twice | Single-use: record deleted on first successful retrieval |
 | Stale proofs accumulate | TTL + periodic cleanup sweep |
+| Authenticated caller fills disk with large proofs | `proof_json` size cap (default 1 MiB) enforced at both the HTTP transport layer and the RPC handler; oversized requests rejected before encryption |
 | Timing oracle on token comparison | `subtle::ConstantTimeEq` for bearer token check |
 | Unauthenticated RPC calls | Optional Bearer token enforced at HTTP layer before RPC parsing |
 | Memory leak of key material | `ZeroizeOnDrop` on all sensitive types |

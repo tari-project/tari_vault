@@ -180,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
         cfg.server.auth_token.clone(),
         tls,
         cfg.server.insecure_no_tls,
+        cfg.server.max_proof_size_bytes,
     )
     .await
     .context("Failed to start RPC server")?;

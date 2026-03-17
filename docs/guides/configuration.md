@@ -46,6 +46,13 @@ auth_token = ""
 # Default: false
 # insecure_no_tls = false
 
+# Maximum allowed serialised size of proof_json in bytes.
+# Requests whose proof_json exceeds this limit are rejected with an
+# InvalidParameter error (-32006) before encryption or storage occurs.
+# The HTTP transport enforces the same cap on the full request body.
+# Default: 1048576 (1 MiB)
+# max_proof_size_bytes = 1048576
+
 [storage]
 # Which storage backend to use: "file" (default) or "sqlite".
 # "file"   — JSON file, zero extra dependencies, suitable for low-volume deployments.
@@ -89,6 +96,7 @@ server:
   # tls_cert_path: "/etc/tari_vault/cert.pem"
   # tls_key_path:  "/etc/tari_vault/key.pem"
   # insecure_no_tls: false
+  # max_proof_size_bytes: 1048576
 
 storage:
   # backend: "file"                          # or "sqlite"
@@ -113,6 +121,7 @@ All variables use the prefix `VAULT__` with `__` as the section separator.
 | `VAULT__SERVER__TLS_CERT_PATH` | path | *(none)* | PEM TLS certificate file |
 | `VAULT__SERVER__TLS_KEY_PATH` | path | *(none)* | PEM TLS private key file |
 | `VAULT__SERVER__INSECURE_NO_TLS` | bool | `false` | Allow plain HTTP on non-loopback (proxy termination only) |
+| `VAULT__SERVER__MAX_PROOF_SIZE_BYTES` | integer | `1048576` | Maximum `proof_json` size in bytes; requests over this limit are rejected |
 | `VAULT__STORAGE__BACKEND` | string | `file` | Storage backend: `file` or `sqlite` |
 | `VAULT__STORAGE__VAULT_FILE` | path | *(platform data dir)* | Path to vault JSON file |
 | `VAULT__STORAGE__SQLITE_PATH` | path | *(same dir as vault_file, `vault.db`)* | Path to SQLite database |
@@ -161,6 +170,7 @@ CLI flags override everything else (highest priority).
 | `server.tls_cert_path` | *(none / null)* | Required when binding to a non-loopback address |
 | `server.tls_key_path` | *(none / null)* | Required when binding to a non-loopback address |
 | `server.insecure_no_tls` | `false` | Bypass TLS requirement; only for external-proxy deployments |
+| `server.max_proof_size_bytes` | `1048576` | Maximum `proof_json` size in bytes (1 MiB) |
 | `storage.backend` | `file` | `file` or `sqlite` |
 | `storage.vault_file` | `<platform_data_dir>/tari_vault/vault.json` | Created on first run (file backend) |
 | `storage.sqlite_path` | same dir as `vault_file`, named `vault.db` | Created on first run (sqlite backend) |

@@ -82,7 +82,7 @@ All methods are JSON-RPC 2.0 over HTTP POST. The machine-readable spec is served
 | `vault_deleteProof` | `Claim_ID` | `null` |
 | `rpc.discover` | — | OpenRPC spec |
 
-**Error codes:** `-32001` NotFound · `-32002` Expired · `-32003` InvalidClaimId · `-32004` DecryptionFailed · `-32005` Internal
+**Error codes:** `-32001` NotFound · `-32002` Expired · `-32003` InvalidClaimId · `-32004` DecryptionFailed · `-32005` Internal · `-32006` InvalidParameter
 
 Full reference: [JSON-RPC Reference](docs/api/json-rpc-reference.md)
 

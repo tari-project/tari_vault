@@ -17,7 +17,7 @@ async fn start_test_server(auth_token: Option<String>) -> (String, ServerHandle,
     let dir = TempDir::new().unwrap();
     let storage = LocalFileStore::new(dir.path().join("vault.json")).unwrap();
     let vault = StandardVault::new(storage);
-    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, None, false)
+    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, None, false, 1_048_576)
         .await
         .unwrap();
     (format!("http://{addr}"), handle, dir)
@@ -53,9 +53,16 @@ async fn start_test_server_tls(
         key_path,
     };
 
-    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, Some(tls_cfg), false)
-        .await
-        .unwrap();
+    let (addr, handle) = start_server(
+        "127.0.0.1:0",
+        vault,
+        auth_token,
+        Some(tls_cfg),
+        false,
+        1_048_576,
+    )
+    .await
+    .unwrap();
 
     (format!("https://{addr}"), handle, dir, cert_der)
 }
@@ -352,7 +359,7 @@ async fn start_test_server_sqlite(auth_token: Option<String>) -> (String, Server
     let dir = TempDir::new().unwrap();
     let storage = SqliteStore::new(dir.path().join("vault.db")).unwrap();
     let vault = StandardVault::new(storage);
-    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, None, false)
+    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, None, false, 1_048_576)
         .await
         .unwrap();
     (format!("http://{addr}"), handle, dir)
@@ -786,6 +793,39 @@ async fn discover_requires_auth() {
     assert!(
         www_auth.contains("Bearer"),
         "expected WWW-Authenticate: Bearer header, got: {www_auth:?}"
+    );
+}
+
+// ── request size cap tests ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn store_oversized_proof_returns_invalid_parameter() {
+    // Start server with a 1 KiB proof size limit.
+    let dir = TempDir::new().unwrap();
+    let storage = LocalFileStore::new(dir.path().join("vault.json")).unwrap();
+    let vault = StandardVault::new(storage);
+    let (addr, _handle) = start_server("127.0.0.1:0", vault, None, None, false, 1024)
+        .await
+        .unwrap();
+    let client = HttpClientBuilder::default()
+        .build(format!("http://{addr}"))
+        .unwrap();
+
+    // Build a proof whose JSON representation exceeds 1 KiB.
+    let large_str = "x".repeat(2000);
+    let params = StoreProofParams {
+        proof_json: json!({"data": large_str}),
+        expires_in_secs: None,
+    };
+    let err = client
+        .request::<String, _>("vault_storeProof", rpc_params![params])
+        .await
+        .expect_err("Expected error for oversized proof_json");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(
+        code, -32006,
+        "Expected InvalidParameter (-32006), got {code}"
     );
 }
 

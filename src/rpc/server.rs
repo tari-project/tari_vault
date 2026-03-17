@@ -2,7 +2,7 @@ use std::{net::SocketAddr, path::PathBuf, sync::Arc};
 
 use anyhow::Context;
 use jsonrpsee::{
-    server::{Methods, Server, ServerHandle},
+    server::{Methods, Server, ServerConfig, ServerHandle},
     types::ErrorObjectOwned,
 };
 use tokio::net::{TcpListener, TcpStream};
@@ -29,17 +29,29 @@ pub struct TlsConfig {
 /// Concrete JSON-RPC handler that delegates to a `ProofVault` implementation.
 pub struct VaultRpcImpl<V> {
     vault: V,
+    max_proof_size_bytes: usize,
 }
 
 impl<V: ProofVault> VaultRpcImpl<V> {
-    pub fn new(vault: V) -> Self {
-        Self { vault }
+    pub fn new(vault: V, max_proof_size_bytes: usize) -> Self {
+        Self {
+            vault,
+            max_proof_size_bytes,
+        }
     }
 }
 
 #[async_trait::async_trait]
 impl<V: ProofVault + 'static> VaultRpcServer for VaultRpcImpl<V> {
     async fn store_proof(&self, params: StoreProofParams) -> Result<String, ErrorObjectOwned> {
+        let proof_size = params.proof_json.to_string().len();
+        if proof_size > self.max_proof_size_bytes {
+            return Err(vault_to_rpc_err(VaultError::InvalidParameter(format!(
+                "proof_json exceeds maximum allowed size of {} bytes",
+                self.max_proof_size_bytes
+            ))));
+        }
+
         let proof = PlaintextProof::from_json(&params.proof_json).map_err(vault_to_rpc_err)?;
 
         self.vault
@@ -84,18 +96,28 @@ pub async fn start_server(
     auth_token: Option<String>,
     tls: Option<TlsConfig>,
     insecure_no_tls: bool,
+    max_proof_size_bytes: usize,
 ) -> anyhow::Result<(SocketAddr, ServerHandle)> {
     check_tls_for_non_loopback(bind_addr, &tls, insecure_no_tls)?;
 
     let auth = BearerAuthLayer::from_config(auth_token);
     let middleware = tower::ServiceBuilder::new().layer(auth);
 
-    let mut rpc_module = VaultRpcImpl::new(vault).into_rpc();
+    let mut rpc_module = VaultRpcImpl::new(vault, max_proof_size_bytes).into_rpc();
     rpc_module.merge(discovery_module())?;
 
     match tls {
-        None => start_plain(bind_addr, middleware, rpc_module).await,
-        Some(tls_cfg) => start_tls(bind_addr, middleware, rpc_module, tls_cfg).await,
+        None => start_plain(bind_addr, middleware, rpc_module, max_proof_size_bytes).await,
+        Some(tls_cfg) => {
+            start_tls(
+                bind_addr,
+                middleware,
+                rpc_module,
+                tls_cfg,
+                max_proof_size_bytes,
+            )
+            .await
+        }
     }
 }
 
@@ -107,8 +129,18 @@ async fn start_plain(
         tower::layer::util::Stack<BearerAuthLayer, tower::layer::util::Identity>,
     >,
     rpc_module: impl Into<Methods>,
+    max_proof_size_bytes: usize,
 ) -> anyhow::Result<(SocketAddr, ServerHandle)> {
+    // Add 4 KiB headroom for the JSON-RPC envelope so the transport limit
+    // mirrors the semantic limit without rejecting valid requests.
+    let http_body_limit: u32 = (max_proof_size_bytes.saturating_add(4096))
+        .try_into()
+        .unwrap_or(u32::MAX);
+    let server_cfg = ServerConfig::builder()
+        .max_request_body_size(http_body_limit)
+        .build();
     let server = Server::builder()
+        .set_config(server_cfg)
         .set_http_middleware(middleware)
         .build(bind_addr)
         .await?;
@@ -134,12 +166,21 @@ async fn start_tls(
     >,
     rpc_module: impl Into<Methods>,
     tls_cfg: TlsConfig,
+    max_proof_size_bytes: usize,
 ) -> anyhow::Result<(SocketAddr, ServerHandle)> {
     let tls_acceptor = build_tls_acceptor(&tls_cfg)?;
+
+    let http_body_limit: u32 = (max_proof_size_bytes.saturating_add(4096))
+        .try_into()
+        .unwrap_or(u32::MAX);
+    let server_cfg = ServerConfig::builder()
+        .max_request_body_size(http_body_limit)
+        .build();
 
     // The plain server always binds to loopback so it is not reachable from
     // the outside world.  The auth token check still runs for every request.
     let plain_server = Server::builder()
+        .set_config(server_cfg)
         .set_http_middleware(middleware)
         .build("127.0.0.1:0")
         .await?;

@@ -82,7 +82,12 @@ Encrypt and store a proof. Returns a single-use `Claim_ID` token.
 
 **Result:** `string` — 64-character base64url `Claim_ID` token.
 
-**Errors:** `-32005` (internal storage error)
+**Errors:**
+
+| Code | Name | Condition |
+|------|------|-----------|
+| `-32006` | `InvalidParameter` | `proof_json` exceeds the configured size limit (`max_proof_size_bytes`, default 1 MiB), or `expires_in_secs` is `0`. |
+| `-32005` | `InternalError` | Storage or serialisation error. |
 
 **Example:**
 
@@ -272,6 +277,7 @@ curl -s -X POST http://127.0.0.1:9000 \
 | `-32003` | `InvalidClaimId` | Malformed base64url token or wrong length (expected 64 chars). |
 | `-32004` | `DecryptionFailed` | AES-GCM decryption failed. Generic message — no oracle information. |
 | `-32005` | `InternalError` | Storage I/O error or JSON serialisation error. |
+| `-32006` | `InvalidParameter` | Invalid parameter value (e.g. `proof_json` too large, `expires_in_secs = 0`). |
 
 ### Standard JSON-RPC error codes
 
@@ -304,6 +310,8 @@ It encodes 48 raw bytes:
 ## Proof JSON Format
 
 The `proof_json` field accepts **any JSON value** — object, string, number, array, or boolean. The vault does not inspect, validate, or transform the value; it is serialised to bytes, encrypted, and returned verbatim on retrieval.
+
+**Size limit:** the serialised `proof_json` must not exceed `max_proof_size_bytes` (default 1 MiB). Oversized payloads are rejected with error `-32006` (`InvalidParameter`) before any encryption occurs. The limit is configurable via `VAULT__SERVER__MAX_PROOF_SIZE_BYTES`.
 
 Valid examples:
 

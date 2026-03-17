@@ -85,14 +85,14 @@ Request params:  positional, one argument (object)
 
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
-| `proof_json` | any JSON | yes | Stored verbatim; not inspected |
+| `proof_json` | any JSON | yes | Stored verbatim; not inspected. Must be ≤ `max_proof_size_bytes` (default 1 MiB). |
 | `expires_in_secs` | integer ≥ 0 | no | Omit or null = never expires |
 
 ```json
 {"jsonrpc":"2.0","result":"<64-char-claim-id>","id":1}
 ```
 
-Errors: `-32005` (storage failure)
+Errors: `-32006` (proof_json too large or `expires_in_secs = 0`), `-32005` (storage failure)
 
 ---
 
@@ -169,6 +169,7 @@ Result: OpenRPC document object.
 | `-32003` | InvalidClaimId | Bad base64url or length ≠ 64 chars |
 | `-32004` | DecryptionFailed | AES-GCM failed (wrong key or corrupted data) |
 | `-32005` | InternalError | Storage I/O or serialisation error |
+| `-32006` | InvalidParameter | Invalid parameter (proof_json exceeds size limit, or `expires_in_secs = 0`) |
 
 ### Standard JSON-RPC
 
@@ -280,8 +281,8 @@ let shutdown = CancellationToken::new();
 // Background cleanup
 let cleanup = spawn_cleanup_task(Arc::clone(&vault), Duration::from_secs(300), shutdown.clone());
 
-// RPC server (auth_token: None = disabled)
-let (addr, handle) = start_server("127.0.0.1:9000", Arc::clone(&vault), None).await?;
+// RPC server (auth_token: None = disabled, max_proof_size_bytes: 1 MiB default)
+let (addr, handle) = start_server("127.0.0.1:9000", Arc::clone(&vault), None, None, false, 1_048_576).await?;
 
 // ... on shutdown:
 handle.stop()?;
@@ -343,6 +344,7 @@ pub enum VaultError {
     DecryptionFailed,             // rpc_code() = -32004  (generic, no oracle)
     Storage(StorageError),        // rpc_code() = -32005
     Serialization(String),        // rpc_code() = -32005
+    InvalidParameter(String),     // rpc_code() = -32006
 }
 ```
 
@@ -362,6 +364,7 @@ pub enum VaultError {
 |----------|---------|------|
 | `VAULT__SERVER__BIND_ADDRESS` | `127.0.0.1:9000` | string |
 | `VAULT__SERVER__AUTH_TOKEN` | *(null)* | string |
+| `VAULT__SERVER__MAX_PROOF_SIZE_BYTES` | `1048576` | integer (bytes; default 1 MiB) |
 | `VAULT__STORAGE__BACKEND` | `file` | string (`file` or `sqlite`) |
 | `VAULT__STORAGE__VAULT_FILE` | platform data dir | path |
 | `VAULT__STORAGE__SQLITE_PATH` | same dir as vault_file, `vault.db` | path |
@@ -394,6 +397,7 @@ pub enum VaultError {
 | Timing-safe auth | Bearer token compared with `subtle::ConstantTimeEq` |
 | Crash-safe writes | Atomic rename; old vault file intact until write completes |
 | Auth before parsing | HTTP 401 returned before any JSON-RPC processing |
+| Request size cap | `proof_json` capped at `max_proof_size_bytes` (default 1 MiB) at both transport and handler layers; rejects before encryption |
 
 ---
 
