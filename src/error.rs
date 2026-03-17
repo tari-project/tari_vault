@@ -49,10 +49,7 @@ mod tests {
             VaultError::Storage(StorageError::NotFound).rpc_code(),
             -32005
         );
-        assert_eq!(
-            VaultError::Serialization("oops".into()).rpc_code(),
-            -32005
-        );
+        assert_eq!(VaultError::Serialization("oops".into()).rpc_code(), -32005);
     }
 }
 
