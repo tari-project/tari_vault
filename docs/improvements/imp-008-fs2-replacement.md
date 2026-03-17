@@ -1,6 +1,6 @@
 # IMP-008: Replace Unmaintained `fs2` File-Lock Crate
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 4 — Dependency Hygiene
 **Priority:** Low (superseded by IMP-003 if SQLite backend is adopted)
 

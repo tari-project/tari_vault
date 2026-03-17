@@ -40,7 +40,7 @@ Each improvement has its own file with detailed context, design notes, and compl
 | ID | Title | Status |
 |----|-------|--------|
 | [IMP-007](imp-007-dotenvy.md) | Replace `dotenv` with `dotenvy` | `[x]` |
-| [IMP-008](imp-008-fs2-replacement.md) | Replace unmaintained `fs2` file-lock crate | `[ ]` |
+| [IMP-008](imp-008-fs2-replacement.md) | Replace unmaintained `fs2` file-lock crate | `[x]` |
 | [IMP-009](imp-009-tracing.md) | Migrate from `log4rs` to `tracing` | `[ ]` |
 
 ## Tier 5 — Test Coverage

@@ -6,7 +6,6 @@ use std::{
 };
 
 use chrono::Utc;
-use fs2::FileExt;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
@@ -20,7 +19,7 @@ type DiskState = BTreeMap<String, StoredRecord>;
 /// # Durability & Safety
 /// - Every mutation writes to a temp file first, then atomically renames it over
 ///   the vault file.  A crash mid-write cannot corrupt existing data.
-/// - An `fs2` exclusive lock on a `.lock` sidecar file serialises concurrent
+/// - An `fd-lock` exclusive lock on a `.lock` sidecar file serialises concurrent
 ///   access from *different processes*.
 /// - A `tokio::sync::Mutex` serialises concurrent access within a single process
 ///   without blocking the async executor.
@@ -56,15 +55,14 @@ impl LocalFileStore {
         vault_path.with_extension("lock")
     }
 
-    fn acquire_file_lock(vault_path: &Path) -> Result<File, StorageError> {
+    fn open_lock_file(vault_path: &Path) -> Result<fd_lock::RwLock<File>, StorageError> {
         let lock_path = Self::lock_path(vault_path);
         let f = OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(false)
             .open(lock_path)?;
-        f.lock_exclusive()?;
-        Ok(f)
+        Ok(fd_lock::RwLock::new(f))
     }
 
     fn read_state(vault_path: &Path) -> Result<DiskState, StorageError> {
@@ -82,7 +80,8 @@ impl StorageBackend for LocalFileStore {
         let key = Uuid::from_bytes(record_id).hyphenated().to_string();
 
         tokio::task::spawn_blocking(move || {
-            let _file_lock = Self::acquire_file_lock(&vault_path)?;
+            let mut file_lock = Self::open_lock_file(&vault_path)?;
+            let _guard = file_lock.write()?;
             let mut state = Self::read_state(&vault_path)?;
             state.insert(key, record);
             write_atomic(&vault_path, &state)
@@ -99,7 +98,8 @@ impl StorageBackend for LocalFileStore {
         let key = Uuid::from_bytes(record_id).hyphenated().to_string();
 
         let record = tokio::task::spawn_blocking(move || {
-            let _file_lock = Self::acquire_file_lock(&vault_path)?;
+            let mut file_lock = Self::open_lock_file(&vault_path)?;
+            let _guard = file_lock.write()?;
             let state = Self::read_state(&vault_path)?;
             state.get(&key).cloned().ok_or(StorageError::NotFound)
         })
@@ -115,7 +115,8 @@ impl StorageBackend for LocalFileStore {
         let key = Uuid::from_bytes(record_id).hyphenated().to_string();
 
         let removed = tokio::task::spawn_blocking(move || {
-            let _file_lock = Self::acquire_file_lock(&vault_path)?;
+            let mut file_lock = Self::open_lock_file(&vault_path)?;
+            let _guard = file_lock.write()?;
             let mut state = Self::read_state(&vault_path)?;
             let existed = state.remove(&key).is_some();
             if existed {
@@ -135,7 +136,8 @@ impl StorageBackend for LocalFileStore {
         let now = Utc::now();
 
         let removed = tokio::task::spawn_blocking(move || {
-            let _file_lock = Self::acquire_file_lock(&vault_path)?;
+            let mut file_lock = Self::open_lock_file(&vault_path)?;
+            let _guard = file_lock.write()?;
             let mut state = Self::read_state(&vault_path)?;
             let before = state.len();
             state.retain(|_, r| r.expires_at.map(|t| t > now).unwrap_or(true));

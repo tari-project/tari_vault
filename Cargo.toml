@@ -21,7 +21,7 @@ clap = { version = "4", features = ["derive"] }
 config = { version = "0.15.21", features = ["toml", "yaml"] }
 dirs-next = "2.0"
 dotenvy = "0.15"
-fs2 = "0.4"
+fd-lock = "4.0.4"
 rusqlite = { version = "0.38", features = ["bundled"] }
 rusqlite_migration = "2.4"
 rustls = { version = "0.23", features = ["ring"] }
