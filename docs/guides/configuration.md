@@ -30,6 +30,22 @@ bind_address = "127.0.0.1:9000"
 # Default: null (disabled)
 auth_token = ""
 
+# Path to a PEM TLS certificate file.
+# Required (together with tls_key_path) when bind_address is not a loopback
+# address (127.x.x.x or ::1).  Omit for loopback-only deployments.
+# Default: null (plain HTTP, loopback only)
+# tls_cert_path = "/etc/tari_vault/cert.pem"
+
+# Path to the matching PEM private key file.
+# Default: null
+# tls_key_path = "/etc/tari_vault/key.pem"
+
+# Allow plain HTTP on a non-loopback address.
+# Only enable when TLS is terminated by an external proxy (nginx, Envoy, k8s
+# Ingress) and the vault port is not reachable outside the trusted network.
+# Default: false
+# insecure_no_tls = false
+
 [storage]
 # Path to the JSON vault file.
 # The directory is created automatically if it does not exist.
@@ -63,6 +79,9 @@ YAML format is also supported (`vault_config.yaml`):
 server:
   bind_address: "127.0.0.1:9000"
   auth_token: ""          # or omit for null
+  # tls_cert_path: "/etc/tari_vault/cert.pem"
+  # tls_key_path:  "/etc/tari_vault/key.pem"
+  # insecure_no_tls: false
 
 storage:
   vault_file: "/var/lib/tari_vault/vault.json"
@@ -83,6 +102,9 @@ All variables use the prefix `VAULT__` with `__` as the section separator.
 |----------|------|---------|-------------|
 | `VAULT__SERVER__BIND_ADDRESS` | string | `127.0.0.1:9000` | Server bind address |
 | `VAULT__SERVER__AUTH_TOKEN` | string | *(none)* | Bearer token; empty string = disabled |
+| `VAULT__SERVER__TLS_CERT_PATH` | path | *(none)* | PEM TLS certificate file |
+| `VAULT__SERVER__TLS_KEY_PATH` | path | *(none)* | PEM TLS private key file |
+| `VAULT__SERVER__INSECURE_NO_TLS` | bool | `false` | Allow plain HTTP on non-loopback (proxy termination only) |
 | `VAULT__STORAGE__VAULT_FILE` | path | *(platform data dir)* | Path to vault JSON file |
 | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | integer | `300` | Cleanup sweep interval; `0` = disabled |
 | `VAULT__LOGGING__LEVEL` | string | `info` | Log level |
@@ -109,9 +131,12 @@ CLI flags override everything else (highest priority).
 |------|------|----------------|-------------|
 | `-c, --config <FILE>` | path | — | Explicit config file path (TOML or YAML) |
 | `--vault-file <FILE>` | path | `VAULT__STORAGE__VAULT_FILE` | Vault file path |
-| `--bind <ADDR>` | string | `VAULT__SERVER__BIND_ADDRESS` | Bind address (e.g. `0.0.0.0:9001`) |
+| `--bind <ADDR>` | string | `VAULT__SERVER__BIND_ADDRESS` | Bind address (e.g. `0.0.0.0:9443`) |
 | `--cleanup-interval <SECS>` | integer | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | Cleanup interval; `0` = disabled |
 | `--auth-token <TOKEN>` | string | `VAULT__SERVER__AUTH_TOKEN` | Bearer token |
+| `--tls-cert <FILE>` | path | `VAULT__SERVER__TLS_CERT_PATH` | PEM TLS certificate (required for non-loopback) |
+| `--tls-key <FILE>` | path | `VAULT__SERVER__TLS_KEY_PATH` | PEM TLS private key (required for non-loopback) |
+| `--insecure-no-tls` | flag | `VAULT__SERVER__INSECURE_NO_TLS` | Allow plain HTTP on non-loopback (proxy termination only) |
 | `--log-config <FILE>` | path | `VAULT__LOGGING__CONFIG_FILE` | log4rs YAML config |
 | `--log-level <LEVEL>` | string | `VAULT__LOGGING__LEVEL` | Log level |
 
@@ -123,6 +148,9 @@ CLI flags override everything else (highest priority).
 |---------|--------------|-------|
 | `server.bind_address` | `127.0.0.1:9000` | Loopback only — must set explicitly for external access |
 | `server.auth_token` | *(none / null)* | Auth disabled by default |
+| `server.tls_cert_path` | *(none / null)* | Required when binding to a non-loopback address |
+| `server.tls_key_path` | *(none / null)* | Required when binding to a non-loopback address |
+| `server.insecure_no_tls` | `false` | Bypass TLS requirement; only for external-proxy deployments |
 | `storage.vault_file` | `<platform_data_dir>/tari_vault/vault.json` | Created on first run |
 | `storage.cleanup_interval_secs` | `300` | 5 minutes |
 | `logging.level` | `info` | |
@@ -197,4 +225,4 @@ export VAULT__SERVER__AUTH_TOKEN="$(openssl rand -base64 32)"
 install -d -m 700 /var/lib/tari_vault
 ```
 
-**Bind to loopback for local-only deployments.** The default `127.0.0.1:9000` is intentionally not world-accessible. If you need external access, use a reverse proxy (nginx, Caddy) with TLS rather than binding directly to `0.0.0.0`.
+**Bind to loopback for local-only deployments.** The default `127.0.0.1:9000` is intentionally not world-accessible. If you need external access, enable TLS with `--tls-cert` and `--tls-key` — the vault will refuse to start on a non-loopback address without TLS. Alternatively, terminate TLS at a reverse proxy (nginx, Caddy) and keep the vault bound to loopback.

@@ -4,7 +4,8 @@
 
 | Threat | Mitigation |
 |--------|-----------|
-| Intermediary reads proof in transit | `Claim_ID` only — never plaintext on wire after `storeProof` |
+| Passive observer reads `Claim_ID` in transit | TLS required for non-loopback binds; server hard-errors at startup otherwise. `--insecure-no-tls` bypasses this for external-proxy deployments — operator responsibility to keep the vault port off the public network |
+| Intermediary reads proof payload in transit | `Claim_ID` only — never plaintext on wire after `storeProof` |
 | Attacker reads vault file on disk | Only ciphertext + nonce stored; AES-256-GCM key never written |
 | Attacker guesses `Claim_ID` | 256-bit key space (32-byte random key); brute force infeasible |
 | Replay: retrieve proof twice | Single-use: record deleted on first successful retrieval |

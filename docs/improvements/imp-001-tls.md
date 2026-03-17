@@ -1,6 +1,6 @@
 # IMP-001: Add TLS Support
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 1 — Security
 **Priority:** Critical
 

@@ -26,6 +26,32 @@ pub struct ServerConfig {
     /// Set via `VAULT__SERVER__AUTH_TOKEN` environment variable or the
     /// `server.auth_token` key in the config file.
     pub auth_token: Option<String>,
+
+    /// Path to the TLS certificate file (PEM-encoded).
+    ///
+    /// Both `tls_cert_path` and `tls_key_path` must be set to enable TLS.
+    /// TLS is required when binding to a non-loopback address.
+    ///
+    /// Set via `VAULT__SERVER__TLS_CERT_PATH` or `server.tls_cert_path` in
+    /// the config file.
+    pub tls_cert_path: Option<PathBuf>,
+
+    /// Path to the TLS private key file (PEM-encoded, PKCS#8 or PKCS#1 RSA).
+    ///
+    /// Set via `VAULT__SERVER__TLS_KEY_PATH` or `server.tls_key_path` in
+    /// the config file.
+    pub tls_key_path: Option<PathBuf>,
+
+    /// Allow plain HTTP on a non-loopback address.
+    ///
+    /// **Security risk.** Only enable this when TLS is terminated externally
+    /// (e.g. an nginx/Envoy sidecar or a k8s Ingress controller) and the
+    /// vault is not reachable outside the trusted network.
+    ///
+    /// Set via `VAULT__SERVER__INSECURE_NO_TLS=true` or
+    /// `server.insecure_no_tls = true` in the config file.
+    #[serde(default)]
+    pub insecure_no_tls: bool,
 }
 
 impl std::fmt::Debug for ServerConfig {
@@ -36,6 +62,9 @@ impl std::fmt::Debug for ServerConfig {
                 "auth_token",
                 &self.auth_token.as_deref().map(|_| "<redacted>"),
             )
+            .field("tls_cert_path", &self.tls_cert_path)
+            .field("tls_key_path", &self.tls_key_path)
+            .field("insecure_no_tls", &self.insecure_no_tls)
             .finish()
     }
 }
@@ -67,6 +96,9 @@ impl Default for VaultConfig {
             server: ServerConfig {
                 bind_address: "127.0.0.1:9000".to_string(),
                 auth_token: None,
+                tls_cert_path: None,
+                tls_key_path: None,
+                insecure_no_tls: false,
             },
             storage: StorageConfig {
                 vault_file: default_vault_path(),

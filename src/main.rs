@@ -6,7 +6,7 @@ use tokio_util::sync::CancellationToken;
 
 use tari_vault::{
     config::{VaultConfig, load_config},
-    rpc::start_server,
+    rpc::{TlsConfig, start_server},
     storage::LocalFileStore,
     vault::{ProofVault, StandardVault, spawn_cleanup_task},
 };
@@ -48,6 +48,24 @@ struct Cli {
     /// request.  Omit (or leave empty) to disable authentication.
     #[arg(long, value_name = "TOKEN")]
     auth_token: Option<String>,
+
+    /// Path to the TLS certificate file (PEM).
+    /// Required when binding to a non-loopback address.
+    #[arg(long, value_name = "FILE")]
+    tls_cert: Option<PathBuf>,
+
+    /// Path to the TLS private key file (PEM).
+    /// Required when binding to a non-loopback address.
+    #[arg(long, value_name = "FILE")]
+    tls_key: Option<PathBuf>,
+
+    /// Allow plain HTTP on a non-loopback address.
+    ///
+    /// Use this only when TLS is terminated by an external proxy (nginx,
+    /// Envoy, k8s Ingress) and the vault port is not reachable outside the
+    /// trusted network.  Never use on a publicly exposed address.
+    #[arg(long, default_value_t = false)]
+    insecure_no_tls: bool,
 }
 
 #[tokio::main]
@@ -74,6 +92,15 @@ async fn main() -> anyhow::Result<()> {
     }
     if let Some(token) = cli.auth_token {
         cfg.server.auth_token = Some(token);
+    }
+    if let Some(cert) = cli.tls_cert {
+        cfg.server.tls_cert_path = Some(cert);
+    }
+    if let Some(key) = cli.tls_key {
+        cfg.server.tls_key_path = Some(key);
+    }
+    if cli.insecure_no_tls {
+        cfg.server.insecure_no_tls = true;
     }
 
     init_logging(&cfg)?;
@@ -107,10 +134,32 @@ async fn main() -> anyhow::Result<()> {
         None
     };
 
+    let tls = match (
+        cfg.server.tls_cert_path.clone(),
+        cfg.server.tls_key_path.clone(),
+    ) {
+        (Some(cert_path), Some(key_path)) => Some(TlsConfig {
+            cert_path,
+            key_path,
+        }),
+        (None, None) => None,
+        _ => anyhow::bail!("TLS requires both --tls-cert and --tls-key to be specified"),
+    };
+
+    if cfg.server.insecure_no_tls {
+        log::warn!(
+            target: "tari_vault",
+            "insecure_no_tls is enabled — plain HTTP on a non-loopback address. \
+             Ensure TLS is terminated by an external proxy."
+        );
+    }
+
     let (_addr, server_handle) = start_server(
         &cfg.server.bind_address,
         Arc::clone(&vault),
         cfg.server.auth_token.clone(),
+        tls,
+        cfg.server.insecure_no_tls,
     )
     .await
     .context("Failed to start RPC server")?;

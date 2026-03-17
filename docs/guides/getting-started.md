@@ -68,20 +68,52 @@ OPTIONS:
         --bind <ADDR>                Override the server bind address [e.g. 127.0.0.1:9000]
         --cleanup-interval <SECS>    Cleanup interval in seconds (0 = disabled)
         --auth-token <TOKEN>         Bearer token for HTTP authentication
+        --tls-cert <FILE>            Path to TLS certificate (PEM); required for non-loopback
+        --tls-key <FILE>             Path to TLS private key (PEM); required for non-loopback
+        --insecure-no-tls            Allow plain HTTP on non-loopback (external-proxy deployments only)
         --log-config <FILE>          Path to a log4rs YAML config file
         --log-level <LEVEL>          Log level: error|warn|info|debug|trace [default: info]
     -h, --help                       Print help
     -V, --version                    Print version
 ```
 
-Example — run on a custom port with auth enabled:
+Example — run on a custom port with TLS and auth enabled:
 
 ```bash
 ./tari_vault \
-  --bind 0.0.0.0:9001 \
-  --auth-token "$(openssl rand -base64 32)" \
-  --log-level debug
+  --bind 0.0.0.0:9443 \
+  --tls-cert /etc/tari_vault/cert.pem \
+  --tls-key  /etc/tari_vault/key.pem \
+  --auth-token "$(openssl rand -base64 32)"
 ```
+
+> **Note:** Binding to a non-loopback address without `--tls-cert` / `--tls-key` is a hard error.
+> The `Claim_ID` embeds the AES-256-GCM key in the response body; plain HTTP on a reachable
+> address would expose every key to passive network observers.
+
+### Behind a reverse proxy (k8s, docker-compose, nginx)
+
+When TLS is terminated externally, pass `--insecure-no-tls` to allow plain HTTP
+on a non-loopback address. The vault will log a warning at startup as a reminder.
+
+```bash
+# docker-compose / k8s — nginx/Envoy handles TLS, vault is cluster-internal
+./tari_vault \
+  --bind 0.0.0.0:9000 \
+  --insecure-no-tls \
+  --auth-token "$VAULT_AUTH_TOKEN"
+```
+
+Or via environment variable:
+
+```bash
+VAULT__SERVER__BIND_ADDRESS=0.0.0.0:9000
+VAULT__SERVER__INSECURE_NO_TLS=true
+VAULT__SERVER__AUTH_TOKEN=<token>
+```
+
+> **Warning:** Only use `--insecure-no-tls` when the vault port is not reachable
+> outside the trusted network. Always combine it with `--auth-token`.
 
 ---
 
