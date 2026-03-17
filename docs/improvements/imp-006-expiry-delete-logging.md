@@ -1,6 +1,6 @@
 # IMP-006: Log Failed Expiry Deletion During Retrieve
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 3 — Reliability
 **Priority:** Low
 

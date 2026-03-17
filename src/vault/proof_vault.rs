@@ -143,8 +143,13 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         })?;
 
         if stored.is_expired() {
-            // Best-effort cleanup — ignore secondary errors.
-            let _ = self.storage.delete(record_id).await;
+            if let Err(e) = self.storage.delete(record_id).await {
+                log::warn!(
+                    target: "tari_vault::vault",
+                    "Failed to delete expired record {}; storage error: {e}",
+                    uuid::Uuid::from_bytes(record_id).simple()
+                );
+            }
             log::warn!(
                 target: "tari_vault::vault",
                 "Expired proof access attempt; record_id={}",
