@@ -190,14 +190,10 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
 
         let record_id = claim_id.record_id;
 
-        // Verify existence first so we can return a meaningful error rather
-        // than silently succeeding on a proof that was already consumed.
-        self.storage.fetch(record_id).await.map_err(|e| match e {
-            StorageError::NotFound => VaultError::ProofNotFound,
-            other => VaultError::Storage(other),
-        })?;
-
-        self.storage.delete(record_id).await?;
+        let deleted = self.storage.delete(record_id).await?;
+        if !deleted {
+            return Err(VaultError::ProofNotFound);
+        }
 
         // `claim_id` is dropped here — ZeroizeOnDrop wipes encryption_key.
         log::info!(

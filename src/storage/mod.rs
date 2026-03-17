@@ -35,7 +35,7 @@ impl StorageBackend for AnyBackend {
         }
     }
 
-    async fn delete(&self, record_id: [u8; 16]) -> Result<(), StorageError> {
+    async fn delete(&self, record_id: [u8; 16]) -> Result<bool, StorageError> {
         match self {
             AnyBackend::File(s) => s.delete(record_id).await,
             AnyBackend::Sqlite(s) => s.delete(record_id).await,

@@ -1,6 +1,6 @@
 # IMP-004: Collapse `delete_proof` to Single Storage Round-Trip
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 2 — Architecture / Storage
 **Priority:** Medium
 

@@ -109,21 +109,24 @@ impl StorageBackend for LocalFileStore {
         Ok(record)
     }
 
-    async fn delete(&self, record_id: [u8; 16]) -> Result<(), StorageError> {
+    async fn delete(&self, record_id: [u8; 16]) -> Result<bool, StorageError> {
         let _guard = self.process_lock.lock().await;
         let vault_path = self.vault_path.clone();
         let key = Uuid::from_bytes(record_id).hyphenated().to_string();
 
-        tokio::task::spawn_blocking(move || {
+        let removed = tokio::task::spawn_blocking(move || {
             let _file_lock = Self::acquire_file_lock(&vault_path)?;
             let mut state = Self::read_state(&vault_path)?;
-            state.remove(&key); // silently a no-op if already absent
-            write_atomic(&vault_path, &state)
+            let existed = state.remove(&key).is_some();
+            if existed {
+                write_atomic(&vault_path, &state)?;
+            }
+            Ok::<bool, StorageError>(existed)
         })
         .await
         .map_err(join_error)??;
 
-        Ok(())
+        Ok(removed)
     }
 
     async fn delete_expired(&self) -> Result<usize, StorageError> {

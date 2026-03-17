@@ -140,21 +140,21 @@ impl StorageBackend for SqliteStore {
         Ok(record)
     }
 
-    async fn delete(&self, record_id: [u8; 16]) -> Result<(), StorageError> {
+    async fn delete(&self, record_id: [u8; 16]) -> Result<bool, StorageError> {
         let conn = Arc::clone(&self.conn);
         let key = record_id.to_vec();
 
-        tokio::task::spawn_blocking(move || {
+        let removed = tokio::task::spawn_blocking(move || {
             let conn = conn.lock().map_err(mutex_error)?;
-            conn.execute("DELETE FROM proofs WHERE record_id = ?1", params![key])
+            let count = conn
+                .execute("DELETE FROM proofs WHERE record_id = ?1", params![key])
                 .map_err(db_error)?;
-            // Silently succeeds even when record_id was already absent.
-            Ok::<_, StorageError>(())
+            Ok::<bool, StorageError>(count > 0)
         })
         .await
         .map_err(join_error)??;
 
-        Ok(())
+        Ok(removed)
     }
 
     async fn delete_expired(&self) -> Result<usize, StorageError> {

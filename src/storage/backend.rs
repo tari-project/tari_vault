@@ -24,8 +24,11 @@ pub trait StorageBackend: Send + Sync {
 
     /// Permanently delete a record, enforcing the single-use claim constraint.
     ///
-    /// Silently succeeds if the record has already been removed.
-    fn delete(&self, record_id: [u8; 16]) -> impl Future<Output = Result<(), StorageError>> + Send;
+    /// Returns `Ok(true)` if the record was deleted, `Ok(false)` if it was not found.
+    fn delete(
+        &self,
+        record_id: [u8; 16],
+    ) -> impl Future<Output = Result<bool, StorageError>> + Send;
 
     /// Remove all records whose `expires_at` has passed.
     ///
