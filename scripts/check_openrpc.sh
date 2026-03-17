@@ -154,6 +154,7 @@ expected_codes = {
     -32003: "InvalidClaimId",
     -32004: "DecryptionFailed",
     -32005: "InternalError",
+    -32006: "InvalidParameter",
 }
 
 all_ok = True

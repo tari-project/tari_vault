@@ -38,6 +38,7 @@
         }
       },
       "errors": [
+        { "$ref": "#/components/errors/InvalidParameter" },
         { "$ref": "#/components/errors/InternalError" }
       ],
       "examples": [
@@ -219,9 +220,9 @@
             "description": "The proof material as any JSON value (object, string, number, array, or boolean). The vault serialises whatever is supplied and encrypts it verbatim — structure is opaque to the vault."
           },
           "expires_in_secs": {
-            "description": "Time-to-live in seconds from the moment of storage. After the TTL elapses the proof is inaccessible and will be purged by the next cleanup sweep. Omit or set to `null` for a proof that never expires.",
+            "description": "Time-to-live in seconds from the moment of storage. After the TTL elapses the proof is inaccessible and will be purged by the next cleanup sweep. Omit or set to `null` for a proof that never expires. Must be a positive integer (≥ 1) if provided; zero is rejected with `InvalidParameter`.",
             "type": ["integer", "null"],
-            "minimum": 0,
+            "exclusiveMinimum": 0,
             "examples": [3600, 86400, null]
           }
         },
@@ -268,6 +269,11 @@
       "DecryptionFailed": {
         "code": -32004,
         "message": "Decryption failed",
+        "data": null
+      },
+      "InvalidParameter": {
+        "code": -32006,
+        "message": "Invalid parameter",
         "data": null
       },
       "InternalError": {

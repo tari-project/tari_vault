@@ -140,10 +140,11 @@ where
 mod tests {
     use super::*;
     use crate::{
-        domain::PlaintextProof,
-        storage::LocalFileStore,
+        domain::{EncryptedRecord, PlaintextProof, StoredRecord},
+        storage::{LocalFileStore, StorageBackend},
         vault::{ProofVault, StandardVault},
     };
+    use chrono::Utc;
     use tempfile::TempDir;
 
     fn vault_in(dir: &TempDir) -> Arc<StandardVault<LocalFileStore>> {
@@ -152,31 +153,41 @@ mod tests {
         ))
     }
 
+    /// Insert a record that is already expired directly into storage,
+    /// bypassing `store_proof` (which now rejects TTL=0).
+    async fn insert_expired_record(vault: &Arc<StandardVault<LocalFileStore>>) -> [u8; 16] {
+        let record_id = [1u8; 16];
+        let past = Utc::now() - chrono::Duration::seconds(1);
+        let record = StoredRecord {
+            encrypted: EncryptedRecord {
+                nonce: vec![0u8; 12],
+                ciphertext: vec![0u8; 16],
+            },
+            stored_at: past,
+            expires_at: Some(past),
+        };
+        vault.storage.insert(record_id, record).await.unwrap();
+        record_id
+    }
+
     #[tokio::test]
     async fn cleanup_removes_expired_proofs() {
         let dir = TempDir::new().unwrap();
         let vault = vault_in(&dir);
 
-        // Store two proofs: one already expired, one valid.
-        let expired = vault
-            .store_proof(PlaintextProof::from_bytes(b"old".to_vec()), Some(0))
-            .await
-            .unwrap();
+        // Insert an already-expired record directly (bypassing store_proof).
+        insert_expired_record(&vault).await;
+        // Store a valid proof via the normal path.
         let valid = vault
             .store_proof(PlaintextProof::from_bytes(b"new".to_vec()), Some(3600))
             .await
             .unwrap();
-
-        // Small delay to push past the zero-second TTL.
-        tokio::time::sleep(Duration::from_millis(5)).await;
 
         let removed = vault.cleanup().await.unwrap();
         assert_eq!(removed, 1, "only the expired proof should be removed");
 
         // Valid proof must still be retrievable.
         assert!(vault.retrieve_proof(valid.into()).await.is_ok());
-        // Expired proof must now be gone.
-        assert!(vault.retrieve_proof(expired.into()).await.is_err());
     }
 
     #[tokio::test]
@@ -184,13 +195,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let vault = vault_in(&dir);
 
-        // Store an already-expired proof.
-        vault
-            .store_proof(PlaintextProof::from_bytes(b"stale".to_vec()), Some(0))
-            .await
-            .unwrap();
-
-        tokio::time::sleep(Duration::from_millis(5)).await;
+        // Insert an already-expired record directly (bypassing store_proof).
+        insert_expired_record(&vault).await;
 
         let cancel = CancellationToken::new();
         // Very short interval so the first sweep fires quickly.

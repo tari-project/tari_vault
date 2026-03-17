@@ -59,7 +59,7 @@ pub trait ProofVault: Send + Sync {
 
 /// Reference implementation backed by any `StorageBackend`.
 pub struct StandardVault<B> {
-    storage: Arc<B>,
+    pub(crate) storage: Arc<B>,
 }
 
 impl<B: StorageBackend> StandardVault<B> {
@@ -76,6 +76,12 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         proof: PlaintextProof,
         expires_in_secs: Option<u64>,
     ) -> Result<String, VaultError> {
+        if expires_in_secs == Some(0) {
+            return Err(VaultError::InvalidParameter(
+                "expires_in_secs must be greater than zero".into(),
+            ));
+        }
+
         let generated_key = Aes256Gcm::generate_key(OsRng);
         let nonce = Aes256Gcm::generate_nonce(OsRng);
 
@@ -287,15 +293,35 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn expired_proof_returns_error() {
+    async fn store_proof_with_zero_ttl_returns_invalid_parameter() {
         let dir = TempDir::new().unwrap();
         let vault = vault_in(&dir);
         let proof = PlaintextProof::from_bytes(b"expires".to_vec());
 
-        // Store with negative TTL so it's already expired.
-        let claim_id = vault.store_proof(proof, Some(0)).await.unwrap();
-        // Sleep 1ms to ensure clock advances past the zero-second mark.
-        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        let err = vault.store_proof(proof, Some(0)).await.unwrap_err();
+        assert!(matches!(err, VaultError::InvalidParameter(_)));
+    }
+
+    #[tokio::test]
+    async fn expired_proof_returns_error() {
+        use crate::storage::StorageBackend;
+        use chrono::Utc;
+
+        let dir = TempDir::new().unwrap();
+        let vault = vault_in(&dir);
+
+        // Store with a normal TTL, then overwrite the record in storage with a
+        // past expiry — avoids sleeping in tests.
+        let claim_id = vault
+            .store_proof(PlaintextProof::from_bytes(b"expires".to_vec()), Some(3600))
+            .await
+            .unwrap();
+
+        let decoded = ClaimId::decode(&Zeroizing::new(claim_id.clone())).unwrap();
+        let record_id = decoded.record_id;
+        let mut record = vault.storage.fetch(record_id).await.unwrap();
+        record.expires_at = Some(Utc::now() - Duration::seconds(1));
+        vault.storage.insert(record_id, record).await.unwrap();
 
         let err = vault
             .retrieve_proof(Zeroizing::new(claim_id))

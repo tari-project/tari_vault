@@ -32,7 +32,7 @@ Each improvement has its own file with detailed context, design notes, and compl
 
 | ID | Title | Status |
 |----|-------|--------|
-| [IMP-005](imp-005-ttl-zero-edge-case.md) | Harden TTL=0 edge case | `[ ]` |
+| [IMP-005](imp-005-ttl-zero-edge-case.md) | Harden TTL=0 edge case | `[x]` |
 | [IMP-006](imp-006-expiry-delete-logging.md) | Log failed expiry deletion during retrieve | `[ ]` |
 
 ## Tier 4 — Dependency Hygiene

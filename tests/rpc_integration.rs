@@ -284,22 +284,41 @@ async fn delete_proof_after_retrieval_returns_not_found() {
 }
 
 #[tokio::test]
+async fn store_proof_with_zero_ttl_returns_invalid_parameter() {
+    let (url, _handle, _dir) = start_test_server(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!("expires now"),
+        expires_in_secs: Some(0),
+    };
+    let err = client
+        .request::<String, _>("vault_storeProof", rpc_params![params])
+        .await
+        .expect_err("Expected error for TTL=0");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(
+        code, -32006,
+        "Expected InvalidParameter (-32006), got {code}"
+    );
+}
+
+#[tokio::test]
 async fn retrieve_expired_proof_returns_proof_expired() {
     let (url, _handle, _dir) = start_test_server(None).await;
     let client = HttpClientBuilder::default().build(&url).unwrap();
 
-    // Store with TTL=0 so it expires immediately.
     let params = StoreProofParams {
-        proof_json: json!("expires now"),
-        expires_in_secs: Some(0),
+        proof_json: json!("expires soon"),
+        expires_in_secs: Some(1),
     };
     let claim_id: String = client
         .request("vault_storeProof", rpc_params![params])
         .await
         .unwrap();
 
-    // Wait for the clock to advance past the zero-second mark.
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(1001)).await;
 
     let err = client
         .request::<Value, _>("vault_retrieveProof", rpc_params![claim_id])
@@ -444,7 +463,7 @@ async fn sqlite_delete_proof_removes_it_and_retrieval_fails() {
 }
 
 #[tokio::test]
-async fn sqlite_retrieve_expired_proof_returns_error() {
+async fn sqlite_store_proof_with_zero_ttl_returns_invalid_parameter() {
     let (url, _handle, _dir) = start_test_server_sqlite(None).await;
     let client = HttpClientBuilder::default().build(&url).unwrap();
 
@@ -452,12 +471,33 @@ async fn sqlite_retrieve_expired_proof_returns_error() {
         proof_json: json!("expires now"),
         expires_in_secs: Some(0),
     };
+    let err = client
+        .request::<String, _>("vault_storeProof", rpc_params![params])
+        .await
+        .expect_err("Expected error for TTL=0");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(
+        code, -32006,
+        "Expected InvalidParameter (-32006), got {code}"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_retrieve_expired_proof_returns_error() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!("expires soon"),
+        expires_in_secs: Some(1),
+    };
     let claim_id: String = client
         .request("vault_storeProof", rpc_params![params])
         .await
         .unwrap();
 
-    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    tokio::time::sleep(std::time::Duration::from_millis(1001)).await;
 
     let err = client
         .request::<Value, _>("vault_retrieveProof", rpc_params![claim_id])

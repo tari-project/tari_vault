@@ -1,6 +1,6 @@
 # IMP-005: Harden TTL=0 Edge Case
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 3 — Reliability
 **Priority:** Low–Medium
 

@@ -15,6 +15,9 @@ pub enum VaultError {
     #[error("Invalid claim ID format")]
     InvalidClaimId,
 
+    #[error("Invalid parameter: {0}")]
+    InvalidParameter(String),
+
     #[error("Storage error: {0}")]
     Storage(#[from] StorageError),
 
@@ -30,6 +33,7 @@ impl VaultError {
             Self::ProofExpired => -32002,
             Self::InvalidClaimId => -32003,
             Self::DecryptionFailed => -32004,
+            Self::InvalidParameter(_) => -32006,
             Self::Storage(_) | Self::Serialization(_) => -32005,
         }
     }
@@ -48,6 +52,10 @@ mod tests {
         assert_eq!(
             VaultError::Storage(StorageError::NotFound).rpc_code(),
             -32005
+        );
+        assert_eq!(
+            VaultError::InvalidParameter("bad".into()).rpc_code(),
+            -32006
         );
         assert_eq!(VaultError::Serialization("oops".into()).rpc_code(), -32005);
     }
