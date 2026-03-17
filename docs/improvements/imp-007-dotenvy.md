@@ -1,6 +1,6 @@
 # IMP-007: Replace `dotenv` with `dotenvy`
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 4 — Dependency Hygiene
 **Priority:** Low
 

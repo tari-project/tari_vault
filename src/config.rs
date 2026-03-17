@@ -151,7 +151,7 @@ impl Default for VaultConfig {
 /// Loads a `.env` file from the working directory if present.
 pub fn load_config(config_file: Option<&Path>) -> anyhow::Result<VaultConfig> {
     // Best-effort — silently ignore missing .env file.
-    dotenv::dotenv().ok();
+    dotenvy::dotenv().ok();
 
     let defaults = VaultConfig::default();
 
