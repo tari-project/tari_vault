@@ -19,7 +19,7 @@ Each improvement has its own file with detailed context, design notes, and compl
 | ID | Title | Status |
 |----|-------|--------|
 | [IMP-001](imp-001-tls.md) | Add TLS support | `[x]` |
-| [IMP-002](imp-002-zeroize-claim-id-string.md) | Zeroize incoming `claim_id` string | `[ ]` |
+| [IMP-002](imp-002-zeroize-claim-id-string.md) | Zeroize incoming `claim_id` string | `[x]` |
 
 ## Tier 2 — Architecture / Storage
 

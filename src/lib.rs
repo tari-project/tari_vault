@@ -35,7 +35,7 @@
 //! let claim_id = vault.store_proof(proof, Some(3600)).await?;
 //!
 //! // Receiver side (claim_id passed via untrusted channel)
-//! let proof = vault.retrieve_proof(claim_id).await?;
+//! let proof = vault.retrieve_proof(claim_id.into()).await?;
 //! let json  = proof.into_json()?;
 //! # Ok(()) }
 //! ```

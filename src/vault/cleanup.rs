@@ -174,9 +174,9 @@ mod tests {
         assert_eq!(removed, 1, "only the expired proof should be removed");
 
         // Valid proof must still be retrievable.
-        assert!(vault.retrieve_proof(valid).await.is_ok());
+        assert!(vault.retrieve_proof(valid.into()).await.is_ok());
         // Expired proof must now be gone.
-        assert!(vault.retrieve_proof(expired).await.is_err());
+        assert!(vault.retrieve_proof(expired.into()).await.is_err());
     }
 
     #[tokio::test]

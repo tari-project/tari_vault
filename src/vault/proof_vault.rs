@@ -28,7 +28,7 @@ pub trait ProofVault: Send + Sync {
     /// (single-use), and return the plaintext.
     fn retrieve_proof(
         &self,
-        claim_id_str: String,
+        claim_id_str: Zeroizing<String>,
     ) -> impl Future<Output = Result<PlaintextProof, VaultError>> + Send;
 
     /// Delete all proofs whose TTL has elapsed and return the count removed.
@@ -53,7 +53,7 @@ pub trait ProofVault: Send + Sync {
     /// feedback rather than silently succeeding.
     fn delete_proof(
         &self,
-        claim_id_str: String,
+        claim_id_str: Zeroizing<String>,
     ) -> impl Future<Output = Result<(), VaultError>> + Send;
 }
 
@@ -121,10 +121,12 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         Ok(encoded)
     }
 
-    async fn retrieve_proof(&self, claim_id_str: String) -> Result<PlaintextProof, VaultError> {
+    async fn retrieve_proof(
+        &self,
+        claim_id_str: Zeroizing<String>,
+    ) -> Result<PlaintextProof, VaultError> {
         let claim_id = ClaimId::decode(&claim_id_str)?;
-        // Immediately overwrite the original string in memory.
-        // (String doesn't implement Zeroize, but we won't use it again.)
+        // Zeroizing<String> overwrites the heap allocation on drop.
         drop(claim_id_str);
 
         let record_id = claim_id.record_id;
@@ -181,8 +183,9 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
         Ok(removed)
     }
 
-    async fn delete_proof(&self, claim_id_str: String) -> Result<(), VaultError> {
+    async fn delete_proof(&self, claim_id_str: Zeroizing<String>) -> Result<(), VaultError> {
         let claim_id = ClaimId::decode(&claim_id_str)?;
+        // Zeroizing<String> overwrites the heap allocation on drop.
         drop(claim_id_str);
 
         let record_id = claim_id.record_id;
@@ -221,7 +224,10 @@ impl<V: ProofVault + Send + Sync> ProofVault for Arc<V> {
         (**self).store_proof(proof, expires_in_secs).await
     }
 
-    async fn retrieve_proof(&self, claim_id_str: String) -> Result<PlaintextProof, VaultError> {
+    async fn retrieve_proof(
+        &self,
+        claim_id_str: Zeroizing<String>,
+    ) -> Result<PlaintextProof, VaultError> {
         (**self).retrieve_proof(claim_id_str).await
     }
 
@@ -229,7 +235,7 @@ impl<V: ProofVault + Send + Sync> ProofVault for Arc<V> {
         (**self).cleanup().await
     }
 
-    async fn delete_proof(&self, claim_id_str: String) -> Result<(), VaultError> {
+    async fn delete_proof(&self, claim_id_str: Zeroizing<String>) -> Result<(), VaultError> {
         (**self).delete_proof(claim_id_str).await
     }
 }
@@ -256,7 +262,10 @@ mod tests {
         let claim_id = vault.store_proof(proof, None).await.unwrap();
         assert_eq!(claim_id.len(), 64); // 48 raw bytes → 64-char base64url
 
-        let retrieved = vault.retrieve_proof(claim_id).await.unwrap();
+        let retrieved = vault
+            .retrieve_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap();
         let retrieved_json = retrieved.into_json().unwrap();
         assert_eq!(retrieved_json, proof_value);
     }
@@ -268,10 +277,16 @@ mod tests {
         let proof = PlaintextProof::from_bytes(b"secret".to_vec());
 
         let claim_id = vault.store_proof(proof, None).await.unwrap();
-        vault.retrieve_proof(claim_id.clone()).await.unwrap();
+        vault
+            .retrieve_proof(Zeroizing::new(claim_id.clone()))
+            .await
+            .unwrap();
 
         // Second retrieval must fail.
-        let err = vault.retrieve_proof(claim_id).await.unwrap_err();
+        let err = vault
+            .retrieve_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap_err();
         assert!(matches!(err, VaultError::ProofNotFound));
     }
 
@@ -286,7 +301,10 @@ mod tests {
         // Sleep 1ms to ensure clock advances past the zero-second mark.
         tokio::time::sleep(std::time::Duration::from_millis(1)).await;
 
-        let err = vault.retrieve_proof(claim_id).await.unwrap_err();
+        let err = vault
+            .retrieve_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap_err();
         assert!(matches!(
             err,
             VaultError::ProofExpired | VaultError::ProofNotFound
@@ -302,10 +320,16 @@ mod tests {
         let claim_id = vault.store_proof(proof, None).await.unwrap();
 
         // Explicit delete must succeed.
-        vault.delete_proof(claim_id.clone()).await.unwrap();
+        vault
+            .delete_proof(Zeroizing::new(claim_id.clone()))
+            .await
+            .unwrap();
 
         // Subsequent retrieval must fail with ProofNotFound.
-        let err = vault.retrieve_proof(claim_id).await.unwrap_err();
+        let err = vault
+            .retrieve_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap_err();
         assert!(matches!(err, VaultError::ProofNotFound));
     }
 
@@ -316,10 +340,16 @@ mod tests {
         let proof = PlaintextProof::from_bytes(b"consume-then-delete".to_vec());
 
         let claim_id = vault.store_proof(proof, None).await.unwrap();
-        vault.retrieve_proof(claim_id.clone()).await.unwrap();
+        vault
+            .retrieve_proof(Zeroizing::new(claim_id.clone()))
+            .await
+            .unwrap();
 
         // After retrieval the record is gone — delete must return ProofNotFound.
-        let err = vault.delete_proof(claim_id).await.unwrap_err();
+        let err = vault
+            .delete_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap_err();
         assert!(matches!(err, VaultError::ProofNotFound));
     }
 
@@ -339,7 +369,7 @@ mod tests {
         chars[30] = if chars[30] == 'A' { 'B' } else { 'A' };
         let tampered: String = chars.into_iter().collect();
 
-        let result = vault.retrieve_proof(tampered).await;
+        let result = vault.retrieve_proof(Zeroizing::new(tampered)).await;
         // Either DecryptionFailed (wrong key → auth tag mismatch) or
         // ProofNotFound (corrupted record_id lookup).
         assert!(result.is_err());

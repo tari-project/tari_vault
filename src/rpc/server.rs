@@ -7,6 +7,8 @@ use jsonrpsee::{
 };
 use tokio::net::{TcpListener, TcpStream};
 
+use zeroize::Zeroizing;
+
 use crate::{
     auth::BearerAuthLayer,
     domain::PlaintextProof,
@@ -49,7 +51,7 @@ impl<V: ProofVault + 'static> VaultRpcServer for VaultRpcImpl<V> {
     async fn retrieve_proof(&self, claim_id: String) -> Result<ProofObject, ErrorObjectOwned> {
         let proof = self
             .vault
-            .retrieve_proof(claim_id)
+            .retrieve_proof(Zeroizing::new(claim_id))
             .await
             .map_err(vault_to_rpc_err)?;
 
@@ -59,7 +61,7 @@ impl<V: ProofVault + 'static> VaultRpcServer for VaultRpcImpl<V> {
 
     async fn delete_proof(&self, claim_id: String) -> Result<(), ErrorObjectOwned> {
         self.vault
-            .delete_proof(claim_id)
+            .delete_proof(Zeroizing::new(claim_id))
             .await
             .map_err(vault_to_rpc_err)
     }

@@ -1,6 +1,6 @@
 # IMP-002: Zeroize Incoming `claim_id` String
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 1 — Security
 **Priority:** High
 
