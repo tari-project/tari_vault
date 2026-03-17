@@ -1,0 +1,42 @@
+[package]
+name = "tari_vault"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+name = "tari_vault"
+path = "src/lib.rs"
+
+[[bin]]
+name = "tari_vault"
+path = "src/main.rs"
+
+[dependencies]
+aes-gcm = "0.10"
+anyhow = "1.0.102"
+async-trait = "0.1"
+base64 = "0.22"
+chrono = { version = "0.4.44", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+config = { version = "0.15.21", features = ["toml", "yaml"] }
+dirs-next = "2.0"
+dotenv = "0.15.0"
+fs2 = "0.4"
+http = "1"
+jsonrpsee = { version = "0.26", features = ["server", "macros"] }
+log = { version = "0.4.29", features = ["kv"] }
+log4rs = { version = "1.4.0", features = ["yaml_format", "console_appender", "file_appender", "log_kv"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+subtle = "2"
+tempfile = "3.27.0"
+thiserror = "2.0.18"
+tokio = { version = "1", features = ["full"] }
+tokio-util = "0.7"
+tower = "0.5"
+uuid = { version = "1", features = ["v4"] }
+zeroize = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+jsonrpsee = { version = "0.26", features = ["http-client"] }
+tokio-test = "0.4"

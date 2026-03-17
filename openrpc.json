@@ -1,0 +1,280 @@
+{
+  "openrpc": "1.2.6",
+  "info": {
+    "title": "Tari Vault",
+    "version": "0.1.0",
+    "description": "Encrypted intermediary for handing off L1 Merkle Proofs to L2 wallets without exposing plaintext proof material to intermediaries.\n\nAll vault methods are JSON-RPC 2.0 over HTTP POST. When bearer-token authentication is enabled on the server, every request must carry an `Authorization: Bearer <token>` header — including `rpc.discover`.",
+    "license": {
+      "name": "BSD-3-Clause"
+    }
+  },
+  "servers": [
+    {
+      "name": "Local (default)",
+      "url": "http://127.0.0.1:9000"
+    }
+  ],
+  "methods": [
+    {
+      "name": "vault_storeProof",
+      "summary": "Encrypt and store a proof; return its Claim_ID token.",
+      "description": "Encrypts the supplied proof with a freshly generated AES-256-GCM key, stores only the ciphertext, and returns an opaque `Claim_ID` token that encodes both the storage key and the decryption key (key-in-the-ID pattern). The encryption key **never reaches disk**.\n\nPass the `Claim_ID` through untrusted channels (AI agents, orchestration pipelines, etc.). Only the holder of the `Claim_ID` can decrypt the proof, and only once.",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "params",
+          "description": "Store-proof request body.",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/StoreProofRequest"
+          }
+        }
+      ],
+      "result": {
+        "name": "claim_id",
+        "description": "Opaque 64-character base64url token (no padding). Encodes a 16-byte storage key and a 32-byte AES-256-GCM decryption key. Treat as a secret — anyone who holds it can retrieve the proof.",
+        "schema": {
+          "$ref": "#/components/schemas/ClaimId"
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/InternalError" }
+      ],
+      "examples": [
+        {
+          "name": "Store a Merkle proof object",
+          "params": [
+            {
+              "name": "params",
+              "value": {
+                "proof_json": {
+                  "root": "a1b2c3d4e5f6",
+                  "path": [
+                    { "hash": "aabbcc", "direction": "left" },
+                    { "hash": "ddeeff", "direction": "right" }
+                  ],
+                  "leaf": "deadbeef"
+                },
+                "expires_in_secs": 3600
+              }
+            }
+          ],
+          "result": {
+            "name": "claim_id",
+            "value": "AAAA_example_claim_id_that_is_exactly_64_base64url_chars_here____"
+          }
+        },
+        {
+          "name": "Store a plain-string proof without TTL",
+          "params": [
+            {
+              "name": "params",
+              "value": {
+                "proof_json": "raw proof bytes encoded as a string",
+                "expires_in_secs": null
+              }
+            }
+          ],
+          "result": {
+            "name": "claim_id",
+            "value": "BBBB_example_claim_id_that_is_exactly_64_base64url_chars_here____"
+          }
+        }
+      ]
+    },
+    {
+      "name": "vault_retrieveProof",
+      "summary": "Decrypt and consume a stored proof (single-use).",
+      "description": "Decodes the `Claim_ID` to recover the storage key and decryption key, fetches and decrypts the ciphertext, **deletes the record** (single-use semantics), and returns the original proof JSON.\n\nA second call with the same `Claim_ID` always returns `ProofNotFound` — the record no longer exists.\n\nIf the proof has passed its TTL it is deleted on access and `ProofExpired` is returned.",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "claim_id",
+          "description": "The `Claim_ID` token returned by `vault_storeProof`.",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ClaimId"
+          }
+        }
+      ],
+      "result": {
+        "name": "proof",
+        "description": "The decrypted proof, wrapped in an object to allow future envelope fields without breaking callers.",
+        "schema": {
+          "$ref": "#/components/schemas/ProofObject"
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/ProofNotFound" },
+        { "$ref": "#/components/errors/ProofExpired" },
+        { "$ref": "#/components/errors/InvalidClaimId" },
+        { "$ref": "#/components/errors/DecryptionFailed" },
+        { "$ref": "#/components/errors/InternalError" }
+      ],
+      "examples": [
+        {
+          "name": "Retrieve an object proof",
+          "params": [
+            {
+              "name": "claim_id",
+              "value": "AAAA_example_claim_id_that_is_exactly_64_base64url_chars_here____"
+            }
+          ],
+          "result": {
+            "name": "proof",
+            "value": {
+              "proof_json": {
+                "root": "a1b2c3d4e5f6",
+                "path": [
+                  { "hash": "aabbcc", "direction": "left" },
+                  { "hash": "ddeeff", "direction": "right" }
+                ],
+                "leaf": "deadbeef"
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "vault_deleteProof",
+      "summary": "Abort: delete a stored proof without decrypting it.",
+      "description": "Deletes the stored ciphertext without decrypting or returning it. Intended for the **abort / cancel** flow: when a bridge operation is abandoned (L1 burn rolled back, AI agent error, user cancels), the holder of the `Claim_ID` can discard the proof to free storage and prevent stale retrieval attempts.\n\nRequires the full `Claim_ID` — the storage key alone (embedded in the first 22 base64url characters) is not sufficient, preventing an adversary who only knows the storage key from deleting proofs they cannot read.\n\nReturns `ProofNotFound` if the proof has already been retrieved, previously deleted, or never existed.",
+      "paramStructure": "by-position",
+      "params": [
+        {
+          "name": "claim_id",
+          "description": "The `Claim_ID` token returned by `vault_storeProof`.",
+          "required": true,
+          "schema": {
+            "$ref": "#/components/schemas/ClaimId"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "Always `null` on success.",
+        "schema": {
+          "type": "null"
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/ProofNotFound" },
+        { "$ref": "#/components/errors/InvalidClaimId" },
+        { "$ref": "#/components/errors/InternalError" }
+      ],
+      "examples": [
+        {
+          "name": "Cancel a pending handoff",
+          "params": [
+            {
+              "name": "claim_id",
+              "value": "AAAA_example_claim_id_that_is_exactly_64_base64url_chars_here____"
+            }
+          ],
+          "result": {
+            "name": "result",
+            "value": null
+          }
+        }
+      ]
+    },
+    {
+      "name": "rpc.discover",
+      "summary": "Return this OpenRPC document.",
+      "description": "Standard OpenRPC service-discovery method. Returns the full OpenRPC document describing all methods, schemas, and errors for this API.\n\n**Note:** when bearer-token authentication is enabled, this method also requires the `Authorization: Bearer <token>` header. The spec is additionally available as `openrpc.json` in the source repository.",
+      "paramStructure": "by-position",
+      "params": [],
+      "result": {
+        "name": "openrpc_document",
+        "description": "The OpenRPC document for this service.",
+        "schema": {
+          "type": "object",
+          "description": "A valid OpenRPC 1.2.x document. See https://spec.open-rpc.org/ for the full meta-schema."
+        }
+      },
+      "examples": []
+    }
+  ],
+  "components": {
+    "schemas": {
+      "ClaimId": {
+        "title": "ClaimId",
+        "type": "string",
+        "description": "Opaque 64-character base64url (RFC 4648 §5, no padding) token that encodes a 16-byte storage key concatenated with a 32-byte AES-256-GCM encryption key (48 raw bytes total). The decryption key is **never stored server-side** — losing the token means the proof is permanently inaccessible.",
+        "pattern": "^[A-Za-z0-9_-]{64}$",
+        "minLength": 64,
+        "maxLength": 64,
+        "examples": [
+          "AAAA_example_claim_id_that_is_exactly_64_base64url_chars_here____"
+        ]
+      },
+      "StoreProofRequest": {
+        "title": "StoreProofRequest",
+        "type": "object",
+        "description": "Request body for `vault_storeProof`.",
+        "required": ["proof_json"],
+        "properties": {
+          "proof_json": {
+            "description": "The proof material as any JSON value (object, string, number, array, or boolean). The vault serialises whatever is supplied and encrypts it verbatim — structure is opaque to the vault."
+          },
+          "expires_in_secs": {
+            "description": "Time-to-live in seconds from the moment of storage. After the TTL elapses the proof is inaccessible and will be purged by the next cleanup sweep. Omit or set to `null` for a proof that never expires.",
+            "type": ["integer", "null"],
+            "minimum": 0,
+            "examples": [3600, 86400, null]
+          }
+        },
+        "examples": [
+          {
+            "proof_json": { "root": "a1b2c3", "path": [], "leaf": "deadbeef" },
+            "expires_in_secs": 3600
+          }
+        ]
+      },
+      "ProofObject": {
+        "title": "ProofObject",
+        "type": "object",
+        "description": "Response body for `vault_retrieveProof`. Wraps the proof in an envelope object so future metadata fields can be added without breaking existing callers.",
+        "required": ["proof_json"],
+        "properties": {
+          "proof_json": {
+            "description": "The original proof value exactly as it was passed to `vault_storeProof`."
+          }
+        },
+        "examples": [
+          {
+            "proof_json": { "root": "a1b2c3", "path": [], "leaf": "deadbeef" }
+          }
+        ]
+      }
+    },
+    "errors": {
+      "ProofNotFound": {
+        "code": -32001,
+        "message": "Proof not found",
+        "data": null
+      },
+      "ProofExpired": {
+        "code": -32002,
+        "message": "Proof has expired",
+        "data": null
+      },
+      "InvalidClaimId": {
+        "code": -32003,
+        "message": "Invalid claim ID format",
+        "data": null
+      },
+      "DecryptionFailed": {
+        "code": -32004,
+        "message": "Decryption failed",
+        "data": null
+      },
+      "InternalError": {
+        "code": -32005,
+        "message": "Internal error",
+        "data": null
+      }
+    }
+  }
+}
