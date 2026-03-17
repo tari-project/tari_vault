@@ -226,6 +226,8 @@ tari_vault::vault::StandardVault<B>   // concrete impl; B: StorageBackend
 tari_vault::vault::CleanupTask        // handle to background sweep task
 tari_vault::vault::spawn_cleanup_task // spawn fn
 tari_vault::storage::LocalFileStore   // file-backed StorageBackend
+tari_vault::storage::SqliteStore      // SQLite-backed StorageBackend
+tari_vault::storage::AnyBackend       // enum dispatching to File or Sqlite
 tari_vault::storage::StorageBackend   // trait for custom backends
 tari_vault::domain::PlaintextProof    // memory-safe proof wrapper
 tari_vault::error::VaultError         // all vault errors
@@ -360,7 +362,9 @@ pub enum VaultError {
 |----------|---------|------|
 | `VAULT__SERVER__BIND_ADDRESS` | `127.0.0.1:9000` | string |
 | `VAULT__SERVER__AUTH_TOKEN` | *(null)* | string |
+| `VAULT__STORAGE__BACKEND` | `file` | string (`file` or `sqlite`) |
 | `VAULT__STORAGE__VAULT_FILE` | platform data dir | path |
+| `VAULT__STORAGE__SQLITE_PATH` | same dir as vault_file, `vault.db` | path |
 | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | `300` | integer |
 | `VAULT__LOGGING__LEVEL` | `info` | string |
 | `VAULT__LOGGING__CONFIG_FILE` | *(null)* | path |
@@ -369,7 +373,8 @@ pub enum VaultError {
 
 ```
 --config <FILE>           config file path
---vault-file <FILE>       vault file path
+--vault-file <FILE>       vault file path (file backend)
+--sqlite-path <FILE>      SQLite database path (sqlite backend)
 --bind <ADDR>             bind address
 --cleanup-interval <SECS> cleanup interval (0 = disabled)
 --auth-token <TOKEN>      bearer token
@@ -395,7 +400,9 @@ pub enum VaultError {
 
 ## Disk Format
 
-File: JSON object keyed by hyphenated UUIDv4 strings.
+### File backend (`backend = "file"`)
+
+JSON object keyed by hyphenated UUIDv4 strings.
 
 ```json
 {
@@ -409,7 +416,25 @@ File: JSON object keyed by hyphenated UUIDv4 strings.
 ```
 
 `expires_at` is absent (JSON `null`) when `expires_in_secs` was not provided.
-The encryption key is absent from this file.
+
+### SQLite backend (`backend = "sqlite"`)
+
+Single table `proofs` with a partial index on `expires_at`:
+
+```sql
+CREATE TABLE proofs (
+    record_id   BLOB NOT NULL PRIMARY KEY,  -- 16-byte UUID
+    nonce       BLOB NOT NULL,              -- 12 bytes
+    ciphertext  BLOB NOT NULL,
+    stored_at   TEXT NOT NULL,              -- RFC 3339 UTC
+    expires_at  TEXT                        -- RFC 3339 UTC, NULL = no expiry
+);
+CREATE INDEX idx_expires_at ON proofs (expires_at) WHERE expires_at IS NOT NULL;
+```
+
+WAL mode enabled; `PRAGMA secure_delete = ON` so deleted rows are overwritten with zeros.
+
+The encryption key is absent from both storage formats.
 Permissions: `0600` on Unix (owner read/write only).
 
 ---

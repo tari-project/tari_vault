@@ -1,6 +1,6 @@
 # IMP-003: SQLite Storage Backend
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 2 — Architecture / Storage
 **Priority:** High
 
@@ -38,9 +38,9 @@ CREATE INDEX IF NOT EXISTS idx_expires_at ON proofs (expires_at)
 
 - **`insert`** — `INSERT OR REPLACE INTO proofs ...`
 - **`fetch`** — `SELECT ... FROM proofs WHERE record_id = ?`
-- **`delete`** — `DELETE FROM proofs WHERE record_id = ?; RETURNING *` (detects absence)
+- **`delete`** — `DELETE FROM proofs WHERE record_id = ?` with `changes()` to detect absence
 - **`delete_expired`** — `DELETE FROM proofs WHERE expires_at IS NOT NULL AND expires_at < ?`
-- **Atomic retrieve** — `BEGIN IMMEDIATE; SELECT ...; DELETE ...; COMMIT` (closes the fetch+delete race in `retrieve_proof`)
+- **Atomic retrieve** — single connection with `BEGIN IMMEDIATE; SELECT ...; DELETE ...; COMMIT` (closes the fetch+delete race in `retrieve_proof`)
 
 ### Configuration
 
@@ -54,10 +54,13 @@ sqlite_path = "/var/lib/tari_vault/vault.db"
 
 ### Crate
 
-Use `sqlx` with the `sqlite` feature:
-- Async, compile-time query verification (`sqlx::query!`).
-- Connection pool handles concurrent access without a separate process-level mutex.
-- Removes the need for `fs2` and the tokio `Mutex` wrapping `LocalFileStore`.
+Use `rusqlite` with the `bundled` feature, plus `serde_rusqlite` for row mapping:
+
+- `rusqlite` — synchronous SQLite bindings; the `bundled` feature statically links libsqlite3, removing any system dependency.
+- `serde_rusqlite` — derives `FromRow` / column-name mapping so `StoredRecord` can be deserialized from query results without hand-written column indexing.
+- `rusqlite_migration` — lightweight schema migration helper; apply `M::up(SQL)` migrations at startup so the schema is always current without an out-of-band migration step.
+
+Because `rusqlite` is synchronous, all database calls are wrapped in `tokio::task::spawn_blocking` to avoid blocking the async executor. A single `Mutex<Connection>` (std, not tokio) guards the connection inside the blocking closure; WAL mode makes concurrent reads efficient without a connection pool.
 
 ## Benefits Over `LocalFileStore`
 
@@ -76,12 +79,12 @@ Use `sqlx` with the `sqlite` feature:
 - `src/storage/mod.rs` — export `SqliteStore`
 - `src/config.rs` — `StorageConfig` enum (`File` | `Sqlite`)
 - `src/main.rs` — backend selection at startup
-- `Cargo.toml` — `sqlx` with `sqlite`, `runtime-tokio`, `macros` features
-- `Makefile` — optional: add `make migrate` target
+- `Cargo.toml` — add `rusqlite` (with `bundled` feature), `serde_rusqlite`, `rusqlite_migration`
 
 ## Notes
 
 - `LocalFileStore` is retained as the default for zero-dependency deployments.
 - SQLite database file should have `0600` permissions set at creation, matching the current file store behavior.
-- WAL mode (`PRAGMA journal_mode=WAL`) is recommended for concurrent read performance.
+- WAL mode (`PRAGMA journal_mode=WAL`) is recommended for concurrent read performance and should be set immediately after opening the connection.
+- `PRAGMA foreign_keys = ON` and `PRAGMA secure_delete = ON` are also recommended at connection open time.
 - Removing `fs2` is a separate task (IMP-008) but naturally follows from adopting this backend.

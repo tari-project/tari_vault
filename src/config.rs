@@ -69,9 +69,20 @@ impl std::fmt::Debug for ServerConfig {
     }
 }
 
+/// Which storage backend to use.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendKind {
+    /// JSON file backend (default).  Zero external dependencies.
+    #[default]
+    File,
+    /// SQLite backend.  O(1) per operation, atomic fetch+delete.
+    Sqlite,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageConfig {
-    /// Path to the JSON vault file.
+    /// Path to the JSON vault file (used when `backend = "file"`).
     pub vault_file: PathBuf,
 
     /// How often the background cleanup task sweeps for expired proofs, in
@@ -80,6 +91,22 @@ pub struct StorageConfig {
     ///
     /// Default: 300 (5 minutes).
     pub cleanup_interval_secs: u64,
+
+    /// Which storage backend to use.  Default: `file`.
+    ///
+    /// Set via `VAULT__STORAGE__BACKEND=sqlite` or `storage.backend = "sqlite"`
+    /// in the config file.
+    #[serde(default)]
+    pub backend: BackendKind,
+
+    /// Path to the SQLite database file (used when `backend = "sqlite"`).
+    ///
+    /// Defaults to the same directory as `vault_file`, named `vault.db`.
+    ///
+    /// Set via `VAULT__STORAGE__SQLITE_PATH` or `storage.sqlite_path` in the
+    /// config file.
+    #[serde(default)]
+    pub sqlite_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -103,6 +130,8 @@ impl Default for VaultConfig {
             storage: StorageConfig {
                 vault_file: default_vault_path(),
                 cleanup_interval_secs: 300,
+                backend: BackendKind::File,
+                sqlite_path: None,
             },
             logging: LoggingConfig {
                 config_file: None,
@@ -136,6 +165,7 @@ pub fn load_config(config_file: Option<&Path>) -> anyhow::Result<VaultConfig> {
             "storage.cleanup_interval_secs",
             defaults.storage.cleanup_interval_secs,
         )?
+        .set_default("storage.backend", "file")?
         .set_default("logging.level", defaults.logging.level)?;
 
     // Config file source.

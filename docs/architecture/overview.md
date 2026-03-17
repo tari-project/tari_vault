@@ -63,7 +63,9 @@ graph TB
     end
 
     subgraph StorageLayer["Storage  (src/storage/)"]
+        ANY["AnyBackend enum\nselected at startup via config"]
         STORE["LocalFileStore\nBTreeMap → JSON on disk\nwrite-atomic (rename)\nfs2 inter-process lock\ntokio::sync::Mutex intra-process\n0o600 Unix permissions"]
+        SQLITE["SqliteStore\nWAL mode SQLite\nrusqlite_migration schema versioning\nArc&lt;Mutex&lt;Connection&gt;&gt; + spawn_blocking\n0o600 Unix permissions"]
     end
 
     subgraph DomainTypes["Domain Types  (src/domain/)"]
@@ -85,7 +87,9 @@ graph TB
 
     JSONRPC --> VAULT
     CLEANUP --> VAULT
-    VAULT --> STORE
+    VAULT --> ANY
+    ANY --> STORE
+    ANY --> SQLITE
     VAULT --> CLAIM
     VAULT --> PROOF
     STORE --> RECORD
@@ -103,7 +107,9 @@ graph TB
 | `domain::StoredRecord` | `src/domain/record.rs` | Serialisable on-disk envelope; TTL check |
 | `error` | `src/error.rs` | `VaultError` + `StorageError`; RPC error code mapping |
 | `storage::StorageBackend` | `src/storage/backend.rs` | Async CRUD trait (RPITIT) |
+| `storage::AnyBackend` | `src/storage/mod.rs` | Enum dispatching to File or SQLite backend |
 | `storage::LocalFileStore` | `src/storage/local_file.rs` | File-backed `StorageBackend` implementation |
+| `storage::SqliteStore` | `src/storage/sqlite.rs` | SQLite-backed `StorageBackend` implementation |
 | `vault::ProofVault` | `src/vault/proof_vault.rs` | Core trait + `StandardVault` impl + `Arc<V>` blanket |
 | `vault::CleanupTask` | `src/vault/cleanup.rs` | Periodic TTL sweep background task |
 | `auth::BearerAuthLayer` | `src/auth.rs` | Tower HTTP layer; bearer token enforcement |
@@ -131,8 +137,9 @@ graph TB
 │    ├─ StandardVault<B>                  │
 │    └─ CleanupTask                       │  tokio-util CancellationToken
 ├─────────────────────────────────────────┤
-│  Storage Backend                        │  serde_json, fs2, tempfile, uuid
-│    └─ LocalFileStore                    │  tokio::sync::Mutex + spawn_blocking
+│  Storage Backend                        │  AnyBackend enum (selected at startup)
+│    ├─ LocalFileStore                    │  serde_json, fs2, tempfile, uuid
+│    └─ SqliteStore                       │  rusqlite (bundled), rusqlite_migration
 └─────────────────────────────────────────┘
 ```
 
@@ -154,3 +161,6 @@ The bearer token check happens at the HTTP transport layer — before any JSON-R
 
 ### Atomic file writes
 `LocalFileStore` always writes to a `NamedTempFile` in the same directory as the vault file, then calls `persist()` (an atomic rename). A crash mid-write cannot corrupt the existing vault file.
+
+### SQLite backend and AnyBackend enum dispatch
+`SqliteStore` offers O(1) per-operation complexity, WAL-mode concurrency, and a schema managed by `rusqlite_migration`. Because `StorageBackend` uses RPITIT (`impl Future` returns) it is not object-safe, so runtime backend selection is achieved via the `AnyBackend` enum — zero vtable overhead, closed set of variants, clean `main.rs`. `StandardVault<AnyBackend>` is the single concrete type regardless of which backend is configured.

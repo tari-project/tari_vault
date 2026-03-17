@@ -103,7 +103,9 @@ bind_address = "127.0.0.1:9000"
 auth_token = ""                         # empty = auth disabled
 
 [storage]
+backend = "file"                        # "file" (default) or "sqlite"
 vault_file = "/var/lib/tari_vault/vault.json"
+# sqlite_path = "/var/lib/tari_vault/vault.db"  # used when backend = "sqlite"
 cleanup_interval_secs = 300             # 0 = disabled
 
 [logging]
@@ -112,7 +114,7 @@ level = "info"
 
 Environment variables use a `VAULT__` prefix: `VAULT__SERVER__BIND_ADDRESS`, `VAULT__SERVER__AUTH_TOKEN`, etc.
 
-CLI flags: `--bind`, `--vault-file`, `--auth-token`, `--cleanup-interval`, `--log-level`, `--config`.
+CLI flags: `--bind`, `--vault-file`, `--sqlite-path`, `--auth-token`, `--cleanup-interval`, `--log-level`, `--config`.
 
 Full reference: [Configuration Guide](docs/guides/configuration.md)
 
@@ -124,8 +126,7 @@ Full reference: [Configuration Guide](docs/guides/configuration.md)
 - **Key never persisted** — the decryption key exists only in RAM and in the `Claim_ID`
 - **Bearer token auth** with constant-time comparison (`subtle::ConstantTimeEq`) enforced at the HTTP layer, before RPC parsing
 - **ZeroizeOnDrop** on all sensitive types (`PlaintextProof`, `ClaimId`, intermediate buffers)
-- **Atomic file writes** via `NamedTempFile::persist()` — a crash mid-write cannot corrupt the vault file
-- **Dual-level locking** — `tokio::Mutex` (intra-process) + `fs2` exclusive lock (inter-process)
+- **Two storage backends** — file (`LocalFileStore`: atomic writes via `NamedTempFile::persist()`, dual-lock with `fs2`) or SQLite (`SqliteStore`: WAL mode, O(1) ops, `secure_delete`); selected via `storage.backend` config
 - **Generic crypto error messages** — all AES-GCM failures return `DecryptionFailed` with no detail
 
 Details: [Security Model](docs/architecture/security-model.md)

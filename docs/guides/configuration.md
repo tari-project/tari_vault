@@ -47,13 +47,25 @@ auth_token = ""
 # insecure_no_tls = false
 
 [storage]
-# Path to the JSON vault file.
+# Which storage backend to use: "file" (default) or "sqlite".
+# "file"   — JSON file, zero extra dependencies, suitable for low-volume deployments.
+# "sqlite" — SQLite WAL mode, O(1) per operation, atomic fetch+delete, recommended
+#            for higher throughput or when atomic retrieve is required.
+# Default: "file"
+# backend = "file"
+
+# Path to the JSON vault file (used when backend = "file").
 # The directory is created automatically if it does not exist.
 # Default: platform data dir + "tari_vault/vault.json"
 #   macOS:   ~/Library/Application Support/tari_vault/vault.json
 #   Linux:   ~/.local/share/tari_vault/vault.json
 #   Windows: %APPDATA%\tari_vault\vault.json
 vault_file = "/var/lib/tari_vault/vault.json"
+
+# Path to the SQLite database file (used when backend = "sqlite").
+# The directory is created automatically if it does not exist.
+# Default: same directory as vault_file, named "vault.db"
+# sqlite_path = "/var/lib/tari_vault/vault.db"
 
 # How often the background cleanup task sweeps for expired proofs, in seconds.
 # Set to 0 to disable the automatic background sweep.
@@ -84,7 +96,9 @@ server:
   # insecure_no_tls: false
 
 storage:
+  # backend: "file"                          # or "sqlite"
   vault_file: "/var/lib/tari_vault/vault.json"
+  # sqlite_path: "/var/lib/tari_vault/vault.db"
   cleanup_interval_secs: 300
 
 logging:
@@ -105,7 +119,9 @@ All variables use the prefix `VAULT__` with `__` as the section separator.
 | `VAULT__SERVER__TLS_CERT_PATH` | path | *(none)* | PEM TLS certificate file |
 | `VAULT__SERVER__TLS_KEY_PATH` | path | *(none)* | PEM TLS private key file |
 | `VAULT__SERVER__INSECURE_NO_TLS` | bool | `false` | Allow plain HTTP on non-loopback (proxy termination only) |
+| `VAULT__STORAGE__BACKEND` | string | `file` | Storage backend: `file` or `sqlite` |
 | `VAULT__STORAGE__VAULT_FILE` | path | *(platform data dir)* | Path to vault JSON file |
+| `VAULT__STORAGE__SQLITE_PATH` | path | *(same dir as vault_file, `vault.db`)* | Path to SQLite database |
 | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | integer | `300` | Cleanup sweep interval; `0` = disabled |
 | `VAULT__LOGGING__LEVEL` | string | `info` | Log level |
 | `VAULT__LOGGING__CONFIG_FILE` | path | *(none)* | log4rs YAML config path |
@@ -130,7 +146,8 @@ CLI flags override everything else (highest priority).
 | Flag | Type | Env equivalent | Description |
 |------|------|----------------|-------------|
 | `-c, --config <FILE>` | path | — | Explicit config file path (TOML or YAML) |
-| `--vault-file <FILE>` | path | `VAULT__STORAGE__VAULT_FILE` | Vault file path |
+| `--vault-file <FILE>` | path | `VAULT__STORAGE__VAULT_FILE` | Vault file path (file backend) |
+| `--sqlite-path <FILE>` | path | `VAULT__STORAGE__SQLITE_PATH` | SQLite database path (sqlite backend) |
 | `--bind <ADDR>` | string | `VAULT__SERVER__BIND_ADDRESS` | Bind address (e.g. `0.0.0.0:9443`) |
 | `--cleanup-interval <SECS>` | integer | `VAULT__STORAGE__CLEANUP_INTERVAL_SECS` | Cleanup interval; `0` = disabled |
 | `--auth-token <TOKEN>` | string | `VAULT__SERVER__AUTH_TOKEN` | Bearer token |
@@ -151,7 +168,9 @@ CLI flags override everything else (highest priority).
 | `server.tls_cert_path` | *(none / null)* | Required when binding to a non-loopback address |
 | `server.tls_key_path` | *(none / null)* | Required when binding to a non-loopback address |
 | `server.insecure_no_tls` | `false` | Bypass TLS requirement; only for external-proxy deployments |
-| `storage.vault_file` | `<platform_data_dir>/tari_vault/vault.json` | Created on first run |
+| `storage.backend` | `file` | `file` or `sqlite` |
+| `storage.vault_file` | `<platform_data_dir>/tari_vault/vault.json` | Created on first run (file backend) |
+| `storage.sqlite_path` | same dir as `vault_file`, named `vault.db` | Created on first run (sqlite backend) |
 | `storage.cleanup_interval_secs` | `300` | 5 minutes |
 | `logging.level` | `info` | |
 | `logging.config_file` | *(none)* | Built-in console appender used |

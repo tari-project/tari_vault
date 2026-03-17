@@ -25,7 +25,7 @@ Each improvement has its own file with detailed context, design notes, and compl
 
 | ID | Title | Status |
 |----|-------|--------|
-| [IMP-003](imp-003-sqlite-backend.md) | SQLite storage backend | `[ ]` |
+| [IMP-003](imp-003-sqlite-backend.md) | SQLite storage backend | `[x]` |
 | [IMP-004](imp-004-atomic-delete-proof.md) | Collapse `delete_proof` to single storage round-trip | `[ ]` |
 
 ## Tier 3 — Reliability

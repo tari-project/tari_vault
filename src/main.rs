@@ -5,9 +5,9 @@ use clap::Parser;
 use tokio_util::sync::CancellationToken;
 
 use tari_vault::{
-    config::{VaultConfig, load_config},
+    config::{BackendKind, VaultConfig, load_config},
     rpc::{TlsConfig, start_server},
-    storage::LocalFileStore,
+    storage::{AnyBackend, LocalFileStore, SqliteStore},
     vault::{ProofVault, StandardVault, spawn_cleanup_task},
 };
 
@@ -49,6 +49,11 @@ struct Cli {
     #[arg(long, value_name = "TOKEN")]
     auth_token: Option<String>,
 
+    /// Override the SQLite database file path.
+    /// Only used when the storage backend is set to "sqlite".
+    #[arg(long, value_name = "FILE")]
+    sqlite_path: Option<PathBuf>,
+
     /// Path to the TLS certificate file (PEM).
     /// Required when binding to a non-loopback address.
     #[arg(long, value_name = "FILE")]
@@ -77,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
     // CLI flags take the highest priority.
     if let Some(vault_file) = cli.vault_file {
         cfg.storage.vault_file = vault_file;
+    }
+    if let Some(sqlite_path) = cli.sqlite_path {
+        cfg.storage.sqlite_path = Some(sqlite_path);
     }
     if let Some(bind) = cli.bind {
         cfg.server.bind_address = bind;
@@ -108,8 +116,27 @@ async fn main() -> anyhow::Result<()> {
     log::info!(target: "tari_vault", "Starting Tari Vault v{}", env!("CARGO_PKG_VERSION"));
     log::debug!(target: "tari_vault", "Config: {:?}", cfg);
 
-    let storage = LocalFileStore::new(cfg.storage.vault_file.clone())
-        .context("Failed to open vault storage file")?;
+    let sqlite_path = cfg
+        .storage
+        .sqlite_path
+        .clone()
+        .unwrap_or_else(|| cfg.storage.vault_file.with_file_name("vault.db"));
+
+    let storage = match cfg.storage.backend {
+        BackendKind::File => {
+            log::info!(target: "tari_vault", "Storage backend: file ({})", cfg.storage.vault_file.display());
+            AnyBackend::File(
+                LocalFileStore::new(cfg.storage.vault_file.clone())
+                    .context("Failed to open vault storage file")?,
+            )
+        }
+        BackendKind::Sqlite => {
+            log::info!(target: "tari_vault", "Storage backend: sqlite ({})", sqlite_path.display());
+            AnyBackend::Sqlite(
+                SqliteStore::new(sqlite_path).context("Failed to open SQLite database")?,
+            )
+        }
+    };
     let vault = Arc::new(StandardVault::new(storage));
 
     let purged = vault.cleanup().await.context("Startup cleanup failed")?;

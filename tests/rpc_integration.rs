@@ -8,7 +8,7 @@ use jsonrpsee::{
 use serde_json::{Value, json};
 use tari_vault::{
     rpc::{TlsConfig, api::StoreProofParams, start_server},
-    storage::LocalFileStore,
+    storage::{LocalFileStore, SqliteStore},
     vault::StandardVault,
 };
 use tempfile::TempDir;
@@ -322,6 +322,164 @@ async fn delete_with_invalid_claim_id_returns_error() {
         .request::<Value, _>("vault_deleteProof", rpc_params!["not-a-valid-claim-id"])
         .await
         .expect_err("Expected error for invalid claim ID on delete");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(code, -32003, "Expected InvalidClaimId (-32003), got {code}");
+}
+
+// ── SQLite backend tests ──────────────────────────────────────────────────────
+
+async fn start_test_server_sqlite(auth_token: Option<String>) -> (String, ServerHandle, TempDir) {
+    let dir = TempDir::new().unwrap();
+    let storage = SqliteStore::new(dir.path().join("vault.db")).unwrap();
+    let vault = StandardVault::new(storage);
+    let (addr, handle) = start_server("127.0.0.1:0", vault, auth_token, None, false)
+        .await
+        .unwrap();
+    (format!("http://{addr}"), handle, dir)
+}
+
+#[tokio::test]
+async fn sqlite_store_and_retrieve_via_rpc() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let proof_value = json!({"root": "deadbeef", "path": [1, 2, 3]});
+
+    let params = StoreProofParams {
+        proof_json: proof_value.clone(),
+        expires_in_secs: None,
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .expect("storeProof failed");
+
+    assert_eq!(claim_id.len(), 64, "ClaimId must be 64 base64url chars");
+
+    let result: Value = client
+        .request("vault_retrieveProof", rpc_params![claim_id])
+        .await
+        .expect("retrieveProof failed");
+
+    assert_eq!(result["proof_json"], proof_value);
+}
+
+#[tokio::test]
+async fn sqlite_second_retrieval_returns_not_found() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!("single-use-proof"),
+        expires_in_secs: None,
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .unwrap();
+
+    let _: Value = client
+        .request("vault_retrieveProof", rpc_params![claim_id.clone()])
+        .await
+        .unwrap();
+
+    let err = client
+        .request::<Value, _>("vault_retrieveProof", rpc_params![claim_id])
+        .await
+        .expect_err("Expected ProofNotFound error on second retrieval");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(code, -32001, "Expected ProofNotFound (-32001), got {code}");
+}
+
+#[tokio::test]
+async fn sqlite_store_with_ttl_is_retrievable_immediately() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!({"data": "with-ttl"}),
+        expires_in_secs: Some(3600),
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .expect("storeProof with TTL failed");
+
+    let result: Value = client
+        .request("vault_retrieveProof", rpc_params![claim_id])
+        .await
+        .expect("retrieveProof with TTL failed");
+
+    assert_eq!(result["proof_json"]["data"], "with-ttl");
+}
+
+#[tokio::test]
+async fn sqlite_delete_proof_removes_it_and_retrieval_fails() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!({"root": "to-be-aborted"}),
+        expires_in_secs: None,
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .unwrap();
+
+    let result: Value = client
+        .request("vault_deleteProof", rpc_params![claim_id.clone()])
+        .await
+        .expect("deleteProof should succeed");
+    assert!(result.is_null(), "deleteProof should return null");
+
+    let err = client
+        .request::<Value, _>("vault_retrieveProof", rpc_params![claim_id])
+        .await
+        .expect_err("Expected ProofNotFound after explicit delete");
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(code, -32001, "Expected ProofNotFound (-32001), got {code}");
+}
+
+#[tokio::test]
+async fn sqlite_retrieve_expired_proof_returns_error() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!("expires now"),
+        expires_in_secs: Some(0),
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let err = client
+        .request::<Value, _>("vault_retrieveProof", rpc_params![claim_id])
+        .await
+        .expect_err("Expected error for expired proof");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert!(
+        code == -32002 || code == -32001,
+        "Expected ProofExpired (-32002) or ProofNotFound (-32001), got {code}"
+    );
+}
+
+#[tokio::test]
+async fn sqlite_retrieve_with_invalid_claim_id_returns_error() {
+    let (url, _handle, _dir) = start_test_server_sqlite(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let err = client
+        .request::<Value, _>("vault_retrieveProof", rpc_params!["not-a-valid-claim-id"])
+        .await
+        .expect_err("Expected error for invalid claim ID");
 
     let code = rpc_error_code(&err).expect("should be an RPC Call error");
     assert_eq!(code, -32003, "Expected InvalidClaimId (-32003), got {code}");
