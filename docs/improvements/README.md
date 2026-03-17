@@ -56,5 +56,5 @@ Each improvement has its own file with detailed context, design notes, and compl
 | ID | Title | Status |
 |----|-------|--------|
 | [IMP-013](imp-013-request-size-cap.md) | Request size cap on `proof_json` | `[x]` |
-| [IMP-014](imp-014-expires-in-secs-cast.md) | Fix lossy `u64 → i64` cast for `expires_in_secs` | `[ ]` |
+| [IMP-014](imp-014-expires-in-secs-cast.md) | Fix lossy `u64 → i64` cast for `expires_in_secs` | `[x]` |
 | [IMP-015](imp-015-rate-limiting.md) | Per-caller rate limiting on `storeProof` | `[ ]` |

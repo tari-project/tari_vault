@@ -1,6 +1,6 @@
 # IMP-014: Fix Lossy `u64 → i64` Cast for `expires_in_secs`
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Completed
 **Tier:** 6 — Minor / Nice-to-Have
 **Priority:** Low
 

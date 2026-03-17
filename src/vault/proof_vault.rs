@@ -103,7 +103,14 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
 
         let record_id = claim_id.record_id;
 
-        let expires_at = expires_in_secs.map(|s| Utc::now() + Duration::seconds(s as i64));
+        let expires_at = expires_in_secs
+            .map(|s| -> Result<_, VaultError> {
+                let secs = i64::try_from(s).map_err(|_| {
+                    VaultError::InvalidParameter("expires_in_secs value is too large".into())
+                })?;
+                Ok(Utc::now() + Duration::seconds(secs))
+            })
+            .transpose()?;
 
         let stored = StoredRecord {
             encrypted: EncryptedRecord {
