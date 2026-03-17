@@ -1,6 +1,6 @@
 # IMP-012: Integration Test for `vault_deleteProof` on Expired Proof
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Done
 **Tier:** 5 — Test Coverage
 **Priority:** Low
 

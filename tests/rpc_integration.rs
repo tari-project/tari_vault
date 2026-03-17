@@ -552,39 +552,57 @@ async fn auth_valid_token_allows_requests() {
 #[tokio::test]
 async fn auth_missing_token_is_rejected() {
     let (url, _handle, _dir) = start_test_server(Some(TEST_TOKEN.to_string())).await;
-    // No Authorization header.
-    let client = HttpClientBuilder::default().build(&url).unwrap();
 
-    let params = StoreProofParams {
-        proof_json: json!("unauthenticated"),
-        expires_in_secs: None,
-    };
-    let result = client
-        .request::<String, _>("vault_storeProof", rpc_params![params])
-        .await;
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "vault_storeProof",
+            "params": [{"proof_json": "unauthenticated", "expires_in_secs": null}],
+            "id": 1
+        }))
+        .send()
+        .await
+        .unwrap();
 
-    assert!(result.is_err(), "request without token should be rejected");
+    assert_eq!(resp.status(), 401, "missing token should return HTTP 401");
+    let www_auth = resp
+        .headers()
+        .get("WWW-Authenticate")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        www_auth.contains("Bearer"),
+        "expected WWW-Authenticate: Bearer header, got: {www_auth:?}"
+    );
 }
 
 #[tokio::test]
 async fn auth_wrong_token_is_rejected() {
     let (url, _handle, _dir) = start_test_server(Some(TEST_TOKEN.to_string())).await;
-    let client = HttpClientBuilder::default()
-        .set_headers(bearer_headers("wrong-token"))
-        .build(&url)
+
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .header("Authorization", "Bearer wrong-token")
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "vault_storeProof",
+            "params": [{"proof_json": "wrong token", "expires_in_secs": null}],
+            "id": 1
+        }))
+        .send()
+        .await
         .unwrap();
 
-    let params = StoreProofParams {
-        proof_json: json!("wrong token"),
-        expires_in_secs: None,
-    };
-    let result = client
-        .request::<String, _>("vault_storeProof", rpc_params![params])
-        .await;
-
+    assert_eq!(resp.status(), 401, "wrong token should return HTTP 401");
+    let www_auth = resp
+        .headers()
+        .get("WWW-Authenticate")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
     assert!(
-        result.is_err(),
-        "request with wrong token should be rejected"
+        www_auth.contains("Bearer"),
+        "expected WWW-Authenticate: Bearer header, got: {www_auth:?}"
     );
 }
 
@@ -713,4 +731,87 @@ async fn tls_auth_missing_token_is_rejected() {
         result.is_err(),
         "TLS request without token should be rejected"
     );
+}
+
+// ── rpc.discover tests ────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn discover_returns_valid_openrpc_schema() {
+    let (url, _handle, _dir) = start_test_server(Some(TEST_TOKEN.to_string())).await;
+    let client = HttpClientBuilder::default()
+        .set_headers(bearer_headers(TEST_TOKEN))
+        .build(&url)
+        .unwrap();
+
+    let result: Value = client
+        .request("rpc.discover", rpc_params![])
+        .await
+        .expect("rpc.discover should succeed with valid token");
+
+    assert!(result["openrpc"].is_string(), "missing 'openrpc' field");
+    assert!(result["info"].is_object(), "missing 'info' field");
+    assert!(result["methods"].is_array(), "missing 'methods' field");
+    assert!(
+        !result["methods"].as_array().unwrap().is_empty(),
+        "'methods' array must be non-empty"
+    );
+}
+
+#[tokio::test]
+async fn discover_requires_auth() {
+    let (url, _handle, _dir) = start_test_server(Some(TEST_TOKEN.to_string())).await;
+
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(&serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": "rpc.discover",
+            "params": [],
+            "id": 1
+        }))
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(
+        resp.status(),
+        401,
+        "rpc.discover without token should return HTTP 401"
+    );
+    let www_auth = resp
+        .headers()
+        .get("WWW-Authenticate")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    assert!(
+        www_auth.contains("Bearer"),
+        "expected WWW-Authenticate: Bearer header, got: {www_auth:?}"
+    );
+}
+
+// ── delete expired proof test ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn delete_expired_proof_returns_expired_error() {
+    let (url, _handle, _dir) = start_test_server(None).await;
+    let client = HttpClientBuilder::default().build(&url).unwrap();
+
+    let params = StoreProofParams {
+        proof_json: json!("expires soon"),
+        expires_in_secs: Some(1),
+    };
+    let claim_id: String = client
+        .request("vault_storeProof", rpc_params![params])
+        .await
+        .unwrap();
+
+    tokio::time::sleep(std::time::Duration::from_millis(1001)).await;
+
+    let err = client
+        .request::<Value, _>("vault_deleteProof", rpc_params![claim_id])
+        .await
+        .expect_err("Expected error when deleting an expired proof");
+
+    let code = rpc_error_code(&err).expect("should be an RPC Call error");
+    assert_eq!(code, -32002, "Expected ProofExpired (-32002), got {code}");
 }

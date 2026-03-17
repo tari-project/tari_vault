@@ -46,4 +46,5 @@ zeroize = { version = "1", features = ["derive"] }
 [dev-dependencies]
 jsonrpsee = { version = "0.26", features = ["http-client"] }
 rcgen = "0.13"
+reqwest = { version = "0.13", features = ["json"] }
 tokio-test = "0.4"

@@ -1,6 +1,6 @@
 # IMP-010: Assert HTTP 401 in Auth Rejection Tests
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Done
 **Tier:** 5 — Test Coverage
 **Priority:** Low
 

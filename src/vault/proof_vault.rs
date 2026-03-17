@@ -201,6 +201,27 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
 
         let record_id = claim_id.record_id;
 
+        let stored = self.storage.fetch(record_id).await.map_err(|e| match e {
+            StorageError::NotFound => VaultError::ProofNotFound,
+            other => VaultError::Storage(other),
+        })?;
+
+        if stored.is_expired() {
+            if let Err(e) = self.storage.delete(record_id).await {
+                tracing::warn!(
+                    target: "tari_vault::vault",
+                    "Failed to delete expired record {}; storage error: {e}",
+                    uuid::Uuid::from_bytes(record_id).simple()
+                );
+            }
+            tracing::warn!(
+                target: "tari_vault::vault",
+                "Delete attempt on expired proof; record_id={}",
+                uuid::Uuid::from_bytes(record_id).simple()
+            );
+            return Err(VaultError::ProofExpired);
+        }
+
         let deleted = self.storage.delete(record_id).await?;
         if !deleted {
             return Err(VaultError::ProofNotFound);

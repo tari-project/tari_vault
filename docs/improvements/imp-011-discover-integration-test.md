@@ -1,6 +1,6 @@
 # IMP-011: Integration Test for `rpc.discover`
 
-**Status:** `[ ]` Planned
+**Status:** `[x]` Done
 **Tier:** 5 — Test Coverage
 **Priority:** Low
 
