@@ -139,7 +139,7 @@ Tari Vault is also a library crate. Embed it directly in a `walletd` daemon or a
 
 ```toml
 [dependencies]
-tari_vault = { path = "../tari_vault" }
+tari_vault = { git = "https://github.com/tari-project/tari_vault/", branch = "main" }
 ```
 
 See [Library Integration](docs/guides/library-integration.md) and the [Axum example](docs/guides/library-integration-axum.md).
@@ -174,3 +174,4 @@ See [Contributing](docs/development/contributing.md) for guidelines.
 | [Data Flows](docs/architecture/data-flows.md) | Request lifecycle diagrams |
 | [Security Model](docs/architecture/security-model.md) | Threat model and cryptographic guarantees |
 | [Library Integration](docs/guides/library-integration.md) | Embedding as a library |
+| [LLM/AI Agent Context](docs/llm-context.md) | Dense reference for AI agents and LLMs |
