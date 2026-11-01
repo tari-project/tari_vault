@@ -35,9 +35,9 @@ struct Cli {
     #[arg(long, value_name = "SECS")]
     cleanup_interval: Option<u64>,
 
-    /// Log level when RUST_LOG is not set.
+    /// Override the configured log level when RUST_LOG is not set.
     /// One of: error, warn, info, debug, trace.
-    #[arg(long, default_value = "info")]
+    #[arg(long)]
     log_level: Option<String>,
 
     /// Bearer token required in the `Authorization` header on every RPC
@@ -217,4 +217,21 @@ fn init_logging(cfg: &VaultConfig) {
         .with_env_filter(filter)
         .with_target(true)
         .init();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_log_level_is_none_by_default_so_config_is_not_clobbered() {
+        let cli = Cli::try_parse_from(["tari_vault"]).unwrap();
+        assert_eq!(cli.log_level, None);
+    }
+
+    #[test]
+    fn cli_log_level_overrides_when_passed() {
+        let cli = Cli::try_parse_from(["tari_vault", "--log-level", "debug"]).unwrap();
+        assert_eq!(cli.log_level.as_deref(), Some("debug"));
+    }
 }

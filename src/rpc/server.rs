@@ -195,13 +195,20 @@ async fn start_tls(
     // Spawn the TLS accept loop.  Each accepted connection is handed off to
     // its own task that performs the TLS handshake and then forwards raw TCP
     // bytes to the plain server via copy_bidirectional.
+    let stop_handle = server_handle.clone();
     tokio::spawn(async move {
         loop {
-            let (tcp, peer) = match tls_listener.accept().await {
-                Ok(v) => v,
-                Err(e) => {
-                    tracing::warn!(target: "tari_vault::rpc", "TLS accept error: {e}");
-                    continue;
+            let (tcp, peer) = tokio::select! {
+                _ = stop_handle.clone().stopped() => {
+                    tracing::debug!(target: "tari_vault::rpc", "TLS listener stopping");
+                    break;
+                }
+                accept_res = tls_listener.accept() => match accept_res {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(target: "tari_vault::rpc", "TLS accept error: {e}");
+                        continue;
+                    }
                 }
             };
 

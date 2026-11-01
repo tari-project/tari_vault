@@ -34,7 +34,7 @@ pub struct LocalFileStore {
 impl LocalFileStore {
     /// Open (or create) the vault file at `vault_path`.
     pub fn new(vault_path: PathBuf) -> Result<Self, StorageError> {
-        if let Some(parent) = vault_path.parent() {
+        if let Some(parent) = vault_path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent)?;
         }
 
@@ -161,6 +161,11 @@ fn write_atomic(vault_path: &Path, state: &DiskState) -> Result<(), StorageError
     let parent = vault_path
         .parent()
         .ok_or_else(|| StorageError::Io(std::io::Error::other("vault path has no parent")))?;
+    let parent = if parent.as_os_str().is_empty() {
+        Path::new(".")
+    } else {
+        parent
+    };
 
     let mut temp = tempfile::NamedTempFile::new_in(parent)?;
     let json = serde_json::to_vec_pretty(state)?;
@@ -246,5 +251,18 @@ mod tests {
             Err(StorageError::NotFound)
         ));
         assert!(store.fetch(id_valid).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn bare_relative_filename_is_supported() {
+        let filename = PathBuf::from(format!("test_vault_{}.json", Uuid::new_v4()));
+        let lock_file = filename.with_extension("lock");
+        let store = LocalFileStore::new(filename.clone()).unwrap();
+        let id = *Uuid::new_v4().as_bytes();
+        store.insert(id, make_record(None)).await.unwrap();
+        assert!(store.fetch(id).await.is_ok());
+        drop(store);
+        let _ = std::fs::remove_file(&filename);
+        let _ = std::fs::remove_file(&lock_file);
     }
 }

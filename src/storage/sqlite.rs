@@ -42,7 +42,7 @@ pub struct SqliteStore {
 impl SqliteStore {
     /// Open (or create) the SQLite database at `db_path`.
     pub fn new(db_path: PathBuf) -> Result<Self, StorageError> {
-        if let Some(parent) = db_path.parent() {
+        if let Some(parent) = db_path.parent().filter(|p| !p.as_os_str().is_empty()) {
             std::fs::create_dir_all(parent)?;
         }
 
@@ -275,5 +275,18 @@ mod tests {
 
         // Deleting a non-existent record should succeed silently.
         assert!(store.delete(id).await.is_ok());
+    }
+
+    #[tokio::test]
+    async fn bare_relative_filename_is_supported() {
+        let filename = PathBuf::from(format!("test_vault_{}.db", Uuid::new_v4()));
+        let store = SqliteStore::new(filename.clone()).unwrap();
+        let id = *Uuid::new_v4().as_bytes();
+        store.insert(id, make_record(None)).await.unwrap();
+        assert!(store.fetch(id).await.is_ok());
+        drop(store);
+        let _ = std::fs::remove_file(&filename);
+        let _ = std::fs::remove_file(format!("{}-wal", filename.display()));
+        let _ = std::fs::remove_file(format!("{}-shm", filename.display()));
     }
 }
