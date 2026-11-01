@@ -108,7 +108,12 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
                 let secs = i64::try_from(s).map_err(|_| {
                     VaultError::InvalidParameter("expires_in_secs value is too large".into())
                 })?;
-                Ok(Utc::now() + Duration::seconds(secs))
+                let delta = Duration::try_seconds(secs).ok_or_else(|| {
+                    VaultError::InvalidParameter("expires_in_secs value is too large".into())
+                })?;
+                Utc::now().checked_add_signed(delta).ok_or_else(|| {
+                    VaultError::InvalidParameter("expires_in_secs value is too large".into())
+                })
             })
             .transpose()?;
 
@@ -228,6 +233,22 @@ impl<B: StorageBackend + 'static> ProofVault for StandardVault<B> {
             );
             return Err(VaultError::ProofExpired);
         }
+
+        if stored.encrypted.nonce.len() != 12 {
+            return Err(VaultError::DecryptionFailed);
+        }
+
+        let key = Key::<Aes256Gcm>::from_slice(&claim_id.encryption_key);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(&stored.encrypted.nonce);
+
+        // Authenticate that the caller possesses the valid encryption_key for this
+        // record_id before permitting deletion, and immediately zeroize the plaintext.
+        let _plaintext = Zeroizing::new(
+            cipher
+                .decrypt(nonce, stored.encrypted.ciphertext.as_ref())
+                .map_err(|_| VaultError::DecryptionFailed)?,
+        );
 
         let deleted = self.storage.delete(record_id).await?;
         if !deleted {
@@ -428,5 +449,48 @@ mod tests {
         // Either DecryptionFailed (wrong key → auth tag mismatch) or
         // ProofNotFound (corrupted record_id lookup).
         assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn delete_proof_rejects_forged_key_for_known_record_id() {
+        let dir = TempDir::new().unwrap();
+        let vault = vault_in(&dir);
+        let proof = PlaintextProof::from_bytes(b"protected-secret".to_vec());
+
+        let claim_id = vault.store_proof(proof, None).await.unwrap();
+        let decoded = ClaimId::decode(&claim_id).unwrap();
+
+        // Forge a ClaimId with the genuine record_id but an all-zero encryption key.
+        let forged = ClaimId {
+            record_id: decoded.record_id,
+            encryption_key: [0u8; 32],
+        };
+        let forged_encoded = forged.encode();
+
+        let err = vault
+            .delete_proof(Zeroizing::new(forged_encoded))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, VaultError::DecryptionFailed));
+
+        // The genuine holder must still be able to retrieve the proof.
+        let retrieved = vault
+            .retrieve_proof(Zeroizing::new(claim_id))
+            .await
+            .unwrap();
+        assert_eq!(retrieved.as_bytes(), b"protected-secret");
+    }
+
+    #[tokio::test]
+    async fn store_proof_with_overflowing_ttl_returns_invalid_parameter() {
+        let dir = TempDir::new().unwrap();
+        let vault = vault_in(&dir);
+        let proof = PlaintextProof::from_bytes(b"overflow-ttl".to_vec());
+
+        let err = vault
+            .store_proof(proof, Some(i64::MAX as u64))
+            .await
+            .unwrap_err();
+        assert!(matches!(err, VaultError::InvalidParameter(_)));
     }
 }
